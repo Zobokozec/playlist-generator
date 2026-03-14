@@ -130,7 +130,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
     after_cooldown, cd_excluded = apply_cooldown(eligible, scheduled_start, context)
 
     logger.info("=== SELECTOR ===")
-    selected = select_tracks(after_cooldown, quotas, float(duration_sec))
+    selected = select_tracks(after_cooldown, quotas, float(duration_sec), cfg.MAX_SELECTOR_ITERATIONS)
 
     logger.info("=== VALIDACE ===")
     selected_ids = {t["music_id"] for t in selected}
@@ -172,7 +172,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
         stats=stats,
     )
 
-    output = export_playlist(result, context, params, output_fmt, dry_run=True)
+    output = export_playlist(result, context, params, output_fmt, dry_run=dry_run)
     print(json.dumps(output, ensure_ascii=False, indent=2, default=str))
 
 

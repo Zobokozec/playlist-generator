@@ -20,6 +20,7 @@ def select_tracks(
     tracks: list[dict],
     quotas: dict,
     target_duration: float,
+    max_iterations: int = 10_000,
 ) -> list[dict]:
     """Vybere tracky do playlistu podle procentuálních kvót.
 
@@ -29,6 +30,7 @@ def select_tracks(
                          pct_float: 0.0–1.0 nebo 0–100 (normalizuje se).
                          Např.: {3: {12: 0.40, 15: 0.40}, 5: {45: 0.60}}
         target_duration: Cílová délka v sekundách.
+        max_iterations:  Maximální počet iterací (bezpečnostní pojistka).
 
     Returns:
         Seřazený seznam vybraných tracků (pořadí výběru).
@@ -70,7 +72,6 @@ def select_tracks(
     total_duration = 0.0
     active_quotas = dict(flat_quotas)
 
-    max_iterations = len(tracks) * 3 + 100
     iteration = 0
 
     while total_duration < target_duration and iteration < max_iterations:

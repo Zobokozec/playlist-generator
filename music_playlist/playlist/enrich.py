@@ -13,6 +13,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from .isrc import normalize_isrc
+
 if TYPE_CHECKING:
     from .context import PlaylistContext
 
@@ -72,11 +74,18 @@ def enrich_tracks(rows: list[dict], context: "PlaylistContext") -> list[dict]:
         # Doplnění z file_cache
         fc = file_data.get(mid, {})
         intro = fc.get("intro_sec") or 0.0
-        outro = fc.get("outro_sec") or row["duration"]
+        raw_outro = fc.get("outro_sec")
+        if raw_outro is None and fc:
+            logger.warning(
+                "enrich_tracks: track %d nemá outro_sec v file_cache, fallback na duration (%ds)",
+                mid, row["duration"],
+            )
+        outro = raw_outro if raw_outro is not None else row["duration"]
         net_dur = round(float(outro) - float(intro), 2)
 
         result.append({
             **row,
+            "isrc":         normalize_isrc(row.get("isrc")),
             "entity_ids":   entity_ids,
             "chars_by_cat": chars_by_cat,     # {category_id: [char_id, …]}
             "file_path":    fc.get("file_path"),
