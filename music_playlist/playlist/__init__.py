@@ -20,7 +20,6 @@ from .selector import select_tracks
 from .validator import validate_selected
 from .exporter import export_playlist, GeneratorResult
 from .db import init_db
-from .isrc import normalize_isrc, isrc_equal
 
 __all__ = [
     "PlaylistContext",
@@ -34,6 +33,4 @@ __all__ = [
     "export_playlist",
     "GeneratorResult",
     "init_db",
-    "normalize_isrc",
-    "isrc_equal",
 ]

@@ -7,13 +7,12 @@ Výstup: obohatené dicts s entity_ids, chars_by_cat, net_duration, file_path, �
 Důležité:
     - Batch dotaz na file_cache (jeden dotaz, ne per-track)
     - net_duration = outro_sec - intro_sec  (ne celý soubor)
+    - ISRC se předává beze změny – normalizace je úkolem music-validator
 """
 from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
-
-from .isrc import normalize_isrc
 
 if TYPE_CHECKING:
     from .context import PlaylistContext
@@ -85,7 +84,6 @@ def enrich_tracks(rows: list[dict], context: "PlaylistContext") -> list[dict]:
 
         result.append({
             **row,
-            "isrc":         normalize_isrc(row.get("isrc")),
             "entity_ids":   entity_ids,
             "chars_by_cat": chars_by_cat,     # {category_id: [char_id, …]}
             "file_path":    fc.get("file_path"),
