@@ -17,6 +17,7 @@ dependencies = []
 toml = ["tomli>=2.0; python_version < '3.11'"]
 dev  = [
     "pytest>=7",
+    "music-utils",                          # pip install -e ../music-utils
     "tomli>=2.0; python_version < '3.11'",
 ]
 

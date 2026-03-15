@@ -88,6 +88,7 @@ def enrich_tracks(rows: list[dict], context: "PlaylistContext") -> list[dict]:
             "chars_by_cat": chars_by_cat,     # {category_id: [char_id, …]}
             "file_path":    fc.get("file_path"),
             "file_exists":  bool(fc.get("file_exists", False)),
+            "file_dur_sec": fc.get("file_dur_sec"),
             "intro_sec":    fc.get("intro_sec"),
             "outro_sec":    fc.get("outro_sec"),
             "net_duration": net_dur,

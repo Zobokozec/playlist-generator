@@ -61,6 +61,7 @@ class GeneratorResult:
         "selected":          0,
         "total_duration":    0.0,
     })
+    validation: list = field(default_factory=list)  # seznam TrackValidation z run_validation()
 
 
 def export_playlist(
@@ -70,7 +71,12 @@ def export_playlist(
     output_format: str = "full",
     dry_run: bool = False,
 ) -> dict | list:
-    """Uloží playlist do DB, exportuje XML a vrátí výstup v požadovaném formátu.
+    """Spustí validaci, uloží playlist do DB, exportuje XML a vrátí výstup.
+
+    Pořadí kroků:
+        1. run_validation() – validate_all() z music-utils pro každý track
+        2. _save_to_db()    – playlist, history, výsledky validace
+        3. _export_xml()    – MLP soubor přes xmlplaylist
 
     Args:
         result:        GeneratorResult ze pipeline.
@@ -82,6 +88,11 @@ def export_playlist(
     Returns:
         JSON-serializovatelný výstup dle output_format.
     """
+    from .validator import run_validation
+
+    # Validace vždy (i při dry_run) – výsledky jsou součástí GeneratorResult
+    result.validation = run_validation(result.selected, context)
+
     if not dry_run:
         _save_to_db(result, context, params)
         _export_xml(result, context, params)
@@ -149,6 +160,17 @@ def _save_to_db(
         ))
 
     db.commit()
+
+    # Validační výsledky do track_validation + track_validation_checks
+    if result.validation:
+        from .db import save_validation_results
+        validated_at = (
+            scheduled_start.isoformat()
+            if hasattr(scheduled_start, "isoformat")
+            else str(scheduled_start)
+        )
+        save_validation_results(db, result.playlist_id, result.validation, validated_at)
+
     logger.info("export: playlist #%d uložen (%d tracků)", result.playlist_id, len(result.selected))
 
 

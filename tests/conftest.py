@@ -61,6 +61,7 @@ def _make_track(
     chars_by_cat: dict | None = None,
     file_exists: bool = True,
     file_path: str | None = None,
+    file_dur_sec: float | None = None,
     intro_sec: float = 0.0,
     outro_sec: float | None = None,
 ) -> dict:
@@ -79,6 +80,7 @@ def _make_track(
         "chars_by_cat": chars_by_cat or {3: [12], 5: [45]},
         "file_exists": file_exists,
         "file_path":   file_path or f"X:\\MUSIC\\CD0001\\CD0001_{music_id:02d}.mp3",
+        "file_dur_sec": file_dur_sec,
         "intro_sec":   intro_sec,
         "outro_sec":   outro_sec,
     }
