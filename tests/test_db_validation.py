@@ -1,5 +1,4 @@
-"""Testy pro save_validation_results() a schéma track_validation tabulek."""
-import sqlite3
+"""Testy pro save_validation_results() a schéma track_validation tabulky."""
 import pytest
 from unittest.mock import MagicMock
 
@@ -10,7 +9,8 @@ from music_playlist.playlist.db import init_db, save_validation_results
 # Pomocné funkce
 # ---------------------------------------------------------------------------
 
-def _make_check_result(ok=True, value=None, error=None, warning=None):
+def _cr(ok=True, value=None, error=None, warning=None):
+    """Vytvoří mock CheckResult."""
     cr = MagicMock()
     cr.ok = ok
     cr.value = value
@@ -19,18 +19,22 @@ def _make_check_result(ok=True, value=None, error=None, warning=None):
     return cr
 
 
-def _make_track_validation(track_id, passed=True, errors=None, warnings=None, details=None):
+def _tv(track_id, passed=True, errors=None, warnings=None, details=None):
+    """Vytvoří mock TrackValidation."""
     tv = MagicMock()
     tv.track_id = track_id
     tv.passed = passed
     tv.errors = errors or ([] if passed else ["no_file"])
     tv.warnings = warnings or []
-    tv.details = details or {
-        "file_exists": _make_check_result(ok=passed, error=None if passed else "Soubor neexistuje"),
-        "lang":        _make_check_result(ok=True, value="Angličtina"),
-        "isrc":        _make_check_result(ok=True, value="CZABC2300001"),
-        "year":        _make_check_result(ok=True, value=2023),
-        "duration":    _make_check_result(ok=True, value=251.0),
+    tv.details = details if details is not None else {
+        "file_exists":  _cr(ok=passed, error=None if passed else "Soubor neexistuje"),
+        "lang":         _cr(ok=True, value="Angličtina"),
+        "isrc":         _cr(ok=True, value="CZABC2300001"),
+        "year":         _cr(ok=True, value=2023),
+        "duration":     _cr(ok=True, value=251.0),
+        "track_number": _cr(ok=True, value=3),
+        "album_code":   _cr(ok=True, value="CD0001"),
+        "path_format":  _cr(ok=True),
     }
     return tv
 
@@ -42,7 +46,6 @@ def _make_track_validation(track_id, passed=True, errors=None, warnings=None, de
 @pytest.fixture
 def db():
     conn = init_db(":memory:")
-    # Vložíme playlist aby FK fungoval
     conn.execute(
         "INSERT INTO playlists (name, scheduled_start, duration) VALUES (?, ?, ?)",
         ("test", "2026-03-15T10:00:00", 3600),
@@ -57,25 +60,44 @@ def db():
 
 class TestSchema:
     def test_track_validation_table_exists(self, db):
-        cur = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='track_validation'")
+        cur = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='track_validation'"
+        )
         assert cur.fetchone() is not None
 
-    def test_track_validation_checks_table_exists(self, db):
-        cur = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='track_validation_checks'")
-        assert cur.fetchone() is not None
+    def test_no_track_validation_checks_table(self, db):
+        """Stará EAV tabulka track_validation_checks již neexistuje."""
+        cur = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='track_validation_checks'"
+        )
+        assert cur.fetchone() is None
 
-    def test_required_columns_track_validation(self, db):
+    def test_column_per_check_exists(self, db):
         cur = db.execute("PRAGMA table_info(track_validation)")
         cols = {row[1] for row in cur.fetchall()}
-        assert {"playlist_id", "track_id", "validated_at", "passed", "errors", "warnings"} <= cols
+        expected = {
+            "passed",
+            "file_exists_ok", "file_exists_msg",
+            "lang_ok", "lang_val", "lang_msg",
+            "isrc_ok", "isrc_val", "isrc_msg",
+            "year_ok", "year_val", "year_msg",
+            "duration_ok", "duration_val", "duration_msg",
+            "track_number_ok", "track_number_val",
+            "album_code_ok", "album_code_val",
+            "path_format_ok", "path_format_msg",
+        }
+        assert expected <= cols
 
-    def test_required_columns_track_validation_checks(self, db):
-        cur = db.execute("PRAGMA table_info(track_validation_checks)")
-        cols = {row[1] for row in cur.fetchall()}
-        assert {"validation_id", "track_id", "check_name", "ok", "is_blocking", "value", "error", "warning"} <= cols
+    def test_index_on_playlist_passed(self, db):
+        cur = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_tv_playlist'"
+        )
+        assert cur.fetchone() is not None
 
-    def test_index_on_check_name_ok(self, db):
-        cur = db.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_tvc_check'")
+    def test_index_on_isrc_ok(self, db):
+        cur = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_tv_isrc'"
+        )
         assert cur.fetchone() is not None
 
 
@@ -84,114 +106,102 @@ class TestSchema:
 # ---------------------------------------------------------------------------
 
 class TestSaveValidationResults:
-    def test_saves_one_track(self, db):
-        tv = _make_track_validation(track_id=42, passed=True)
-        save_validation_results(db, playlist_id=1, validation_results=[tv], validated_at="2026-03-15T10:00:00")
-
-        row = db.execute("SELECT * FROM track_validation WHERE track_id = 42").fetchone()
+    def test_saves_one_row_per_track(self, db):
+        save_validation_results(db, 1, [_tv(42)], "2026-03-15T10:00:00")
+        row = db.execute("SELECT * FROM track_validation WHERE track_id=42").fetchone()
         assert row is not None
-        assert row["passed"] == 1
-        assert row["playlist_id"] == 1
 
     def test_saves_multiple_tracks(self, db):
-        tvs = [_make_track_validation(i, passed=True) for i in range(1, 4)]
-        save_validation_results(db, 1, tvs, "2026-03-15T10:00:00")
-
-        count = db.execute("SELECT COUNT(*) FROM track_validation WHERE playlist_id = 1").fetchone()[0]
+        save_validation_results(db, 1, [_tv(i) for i in range(1, 4)], "2026-03-15T10:00:00")
+        count = db.execute("SELECT COUNT(*) FROM track_validation WHERE playlist_id=1").fetchone()[0]
         assert count == 3
 
-    def test_failed_track_has_passed_zero(self, db):
-        tv = _make_track_validation(track_id=99, passed=False, errors=["no_file"])
+    def test_passed_stored_correctly(self, db):
+        save_validation_results(db, 1, [_tv(10, passed=True), _tv(11, passed=False)], "2026-03-15T10:00:00")
+        assert db.execute("SELECT passed FROM track_validation WHERE track_id=10").fetchone()[0] == 1
+        assert db.execute("SELECT passed FROM track_validation WHERE track_id=11").fetchone()[0] == 0
+
+    def test_lang_val_stored(self, db):
+        tv = _tv(20, details={"lang": _cr(ok=True, value="Čeština")})
         save_validation_results(db, 1, [tv], "2026-03-15T10:00:00")
+        row = db.execute("SELECT lang_ok, lang_val FROM track_validation WHERE track_id=20").fetchone()
+        assert row["lang_ok"] == 1
+        assert row["lang_val"] == "Čeština"
 
-        row = db.execute("SELECT passed, errors FROM track_validation WHERE track_id = 99").fetchone()
-        assert row["passed"] == 0
-        assert "no_file" in row["errors"]
-
-    def test_check_rows_saved_per_detail(self, db):
-        details = {
-            "file_exists": _make_check_result(ok=True),
-            "lang":        _make_check_result(ok=True, value="Čeština"),
-            "isrc":        _make_check_result(ok=False, error="Neplatný ISRC"),
-        }
-        tv = _make_track_validation(track_id=10, passed=True, details=details)
+    def test_isrc_val_stored(self, db):
+        tv = _tv(21, details={"isrc": _cr(ok=True, value="CZABC2300001")})
         save_validation_results(db, 1, [tv], "2026-03-15T10:00:00")
+        row = db.execute("SELECT isrc_ok, isrc_val FROM track_validation WHERE track_id=21").fetchone()
+        assert row["isrc_ok"] == 1
+        assert row["isrc_val"] == "CZABC2300001"
 
-        rows = db.execute(
-            "SELECT check_name, ok FROM track_validation_checks WHERE track_id = 10"
-        ).fetchall()
-        names = {r["check_name"] for r in rows}
-        assert names == {"file_exists", "lang", "isrc"}
-
-    def test_no_file_error_is_blocking(self, db):
-        details = {
-            "file_exists": _make_check_result(ok=False, error="Soubor neexistuje"),
-            "lang":        _make_check_result(ok=True, value="Angličtina"),
-        }
-        tv = _make_track_validation(track_id=11, passed=False, errors=["no_file"], details=details)
+    def test_year_val_stored_as_int(self, db):
+        tv = _tv(22, details={"year": _cr(ok=True, value=2023)})
         save_validation_results(db, 1, [tv], "2026-03-15T10:00:00")
+        row = db.execute("SELECT year_ok, year_val FROM track_validation WHERE track_id=22").fetchone()
+        assert row["year_ok"] == 1
+        assert row["year_val"] == 2023
 
-        row = db.execute(
-            "SELECT is_blocking FROM track_validation_checks "
-            "WHERE track_id = 11 AND check_name = 'file_exists'"
-        ).fetchone()
-        assert row["is_blocking"] == 1
-
-    def test_non_blocking_check_has_is_blocking_zero(self, db):
-        details = {
-            "isrc": _make_check_result(ok=False, error="Chybí ISRC"),
-        }
-        tv = _make_track_validation(track_id=12, passed=True, details=details)
+    def test_duration_val_stored_as_float(self, db):
+        tv = _tv(23, details={"duration": _cr(ok=True, value=251.0)})
         save_validation_results(db, 1, [tv], "2026-03-15T10:00:00")
+        row = db.execute("SELECT duration_val FROM track_validation WHERE track_id=23").fetchone()
+        assert abs(row["duration_val"] - 251.0) < 0.01
 
-        row = db.execute(
-            "SELECT is_blocking FROM track_validation_checks "
-            "WHERE track_id = 12 AND check_name = 'isrc'"
-        ).fetchone()
-        assert row["is_blocking"] == 0
-
-    def test_check_value_stored_as_string(self, db):
-        details = {"year": _make_check_result(ok=True, value=2023)}
-        tv = _make_track_validation(track_id=13, passed=True, details=details)
+    def test_failed_check_stores_msg(self, db):
+        tv = _tv(24, passed=False, errors=["no_file"], details={
+            "file_exists": _cr(ok=False, error="Soubor nenalezen"),
+        })
         save_validation_results(db, 1, [tv], "2026-03-15T10:00:00")
+        row = db.execute("SELECT file_exists_ok, file_exists_msg FROM track_validation WHERE track_id=24").fetchone()
+        assert row["file_exists_ok"] == 0
+        assert row["file_exists_msg"] == "Soubor nenalezen"
 
-        row = db.execute(
-            "SELECT value FROM track_validation_checks WHERE track_id = 13 AND check_name = 'year'"
-        ).fetchone()
-        assert row["value"] == "2023"
-
-    def test_warnings_csv_stored(self, db):
-        tv = _make_track_validation(track_id=14, passed=True, warnings=["no_isrc", "year_range"])
-        tv.details = {}
+    def test_warning_stored_in_msg(self, db):
+        tv = _tv(25, details={"duration": _cr(ok=False, warning="Délka se liší o 10s")})
         save_validation_results(db, 1, [tv], "2026-03-15T10:00:00")
+        row = db.execute("SELECT duration_ok, duration_msg FROM track_validation WHERE track_id=25").fetchone()
+        assert row["duration_ok"] == 0
+        assert "10s" in row["duration_msg"]
 
-        row = db.execute("SELECT warnings FROM track_validation WHERE track_id = 14").fetchone()
-        assert "no_isrc" in row["warnings"]
-        assert "year_range" in row["warnings"]
+    def test_missing_check_stored_as_null(self, db):
+        """Kontrola která chybí v details (např. path_format není vždy dostupný) → NULL."""
+        tv = _tv(26, details={"lang": _cr(ok=True, value="Angličtina")})
+        save_validation_results(db, 1, [tv], "2026-03-15T10:00:00")
+        row = db.execute("SELECT path_format_ok FROM track_validation WHERE track_id=26").fetchone()
+        assert row["path_format_ok"] is None
 
     def test_empty_results_no_error(self, db):
         save_validation_results(db, 1, [], "2026-03-15T10:00:00")
-        count = db.execute("SELECT COUNT(*) FROM track_validation").fetchone()[0]
-        assert count == 0
+        assert db.execute("SELECT COUNT(*) FROM track_validation").fetchone()[0] == 0
 
-    def test_queryable_by_check_name(self, db):
-        """Ověří hlavní případ použití: dotaz na tracky s konkrétním selháním."""
-        details_ok = {
-            "isrc": _make_check_result(ok=True, value="CZABC2300001"),
-            "file_exists": _make_check_result(ok=True),
-        }
-        details_bad = {
-            "isrc": _make_check_result(ok=False, error="Chybí ISRC"),
-            "file_exists": _make_check_result(ok=True),
-        }
+    # Klíčové: dotazy které jsou nyní přímočaré díky sloupcovému přístupu
+
+    def test_query_tracks_with_invalid_isrc(self, db):
+        """SELECT track_id WHERE isrc_ok=0 vrátí správný výsledek."""
         tvs = [
-            _make_track_validation(20, passed=True, details=details_ok),
-            _make_track_validation(21, passed=True, details=details_bad),
-            _make_track_validation(22, passed=True, details=details_ok),
+            _tv(30, details={"isrc": _cr(ok=True,  value="CZABC2300001")}),
+            _tv(31, details={"isrc": _cr(ok=False, error="Chybí ISRC")}),
+            _tv(32, details={"isrc": _cr(ok=True,  value="CZABC2300002")}),
         ]
         save_validation_results(db, 1, tvs, "2026-03-15T10:00:00")
+        rows = db.execute("SELECT track_id FROM track_validation WHERE isrc_ok=0").fetchall()
+        assert [r[0] for r in rows] == [31]
 
-        rows = db.execute(
-            "SELECT track_id FROM track_validation_checks WHERE check_name='isrc' AND ok=0"
-        ).fetchall()
-        assert [r["track_id"] for r in rows] == [21]
+    def test_query_failed_tracks_in_playlist(self, db):
+        """SELECT WHERE playlist_id=X AND passed=0 vrátí blokující chyby."""
+        tvs = [_tv(40, passed=True), _tv(41, passed=False), _tv(42, passed=False)]
+        save_validation_results(db, 1, tvs, "2026-03-15T10:00:00")
+        count = db.execute("SELECT COUNT(*) FROM track_validation WHERE playlist_id=1 AND passed=0").fetchone()[0]
+        assert count == 2
+
+    def test_query_all_check_results_in_one_select(self, db):
+        """Celý výsledek validace tracku jedním SELECT * – bez JOIN."""
+        tv = _tv(50, passed=True)
+        save_validation_results(db, 1, [tv], "2026-03-15T10:00:00")
+        row = db.execute("SELECT * FROM track_validation WHERE track_id=50").fetchone()
+        # Vše dostupné v jednom řádku
+        assert row["passed"] == 1
+        assert row["lang_val"] == "Angličtina"
+        assert row["isrc_val"] == "CZABC2300001"
+        assert row["year_val"] == 2023

@@ -66,40 +66,56 @@ CREATE TABLE IF NOT EXISTS album_info (
     album_type  TEXT NOT NULL               -- 'single'|'ep'|'full'
 );
 
--- Souhrnný výsledek validace za track v playlistu
+-- Výsledky validace – jeden řádek = jeden track v playlistu
+-- Každá kontrola má vlastní sloupce: <kontrola>_ok, <kontrola>_val, <kontrola>_msg
+-- _ok  : 0/1 – zda kontrola prošla
+-- _val : normalizovaná hodnota (pokud relevantní)
+-- _msg : chybová nebo varovná zpráva (pokud kontrola selhala)
 CREATE TABLE IF NOT EXISTS track_validation (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    playlist_id     INTEGER NOT NULL,
-    track_id        INTEGER NOT NULL,
-    validated_at    TEXT NOT NULL,          -- ISO datetime
-    passed          INTEGER NOT NULL,       -- 0 = neprošel, 1 = prošel
-    errors          TEXT,                   -- CSV kódů blokujících chyb: 'no_file,no_lang'
-    warnings        TEXT,                   -- CSV kódů varování: 'no_isrc,year_range'
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    playlist_id         INTEGER NOT NULL,
+    track_id            INTEGER NOT NULL,
+    validated_at        TEXT NOT NULL,          -- ISO datetime
+    passed              INTEGER NOT NULL,       -- 0 = neprošel (blokující chyba), 1 = prošel
+
+    -- Blokující kontroly (passed=0 pokud selžou)
+    file_exists_ok      INTEGER,               -- soubor existuje na disku
+    file_exists_msg     TEXT,                  -- cesta nebo chyba
+
+    lang_ok             INTEGER,               -- jazyk přiřazen
+    lang_val            TEXT,                  -- název jazyka (např. 'Angličtina')
+    lang_msg            TEXT,
+
+    -- Neblokující kontroly (varování, passed zůstane 1)
+    isrc_ok             INTEGER,               -- ISRC přítomen a platný formát ISO 3901
+    isrc_val            TEXT,                  -- normalizovaný ISRC bez pomlček
+    isrc_msg            TEXT,
+
+    year_ok             INTEGER,               -- rok přítomen a v rozsahu 1900–2030
+    year_val            INTEGER,               -- rok jako číslo
+    year_msg            TEXT,
+
+    duration_ok         INTEGER,               -- délka > 0 a odpovídá souboru (±5 s)
+    duration_val        REAL,                  -- délka v sekundách
+    duration_msg        TEXT,
+
+    track_number_ok     INTEGER,               -- číslo stopy > 0
+    track_number_val    INTEGER,
+
+    album_code_ok       INTEGER,               -- kód alba ve formátu TYP0000
+    album_code_val      TEXT,                  -- např. 'CD0001'
+
+    path_format_ok      INTEGER,               -- cesta odpovídá konvenci TWR
+    path_format_msg     TEXT,
+
     FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE,
     UNIQUE (playlist_id, track_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_tv_playlist ON track_validation(playlist_id);
+CREATE INDEX IF NOT EXISTS idx_tv_playlist ON track_validation(playlist_id, passed);
 CREATE INDEX IF NOT EXISTS idx_tv_track    ON track_validation(track_id);
-CREATE INDEX IF NOT EXISTS idx_tv_passed   ON track_validation(passed);
-
--- Výsledky jednotlivých kontrol (jeden řádek = jedna kontrola u jednoho tracku)
-CREATE TABLE IF NOT EXISTS track_validation_checks (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    validation_id   INTEGER NOT NULL,
-    track_id        INTEGER NOT NULL,
-    check_name      TEXT NOT NULL,          -- 'file_exists'|'lang'|'isrc'|'year'|...
-    ok              INTEGER NOT NULL,       -- 0/1
-    is_blocking     INTEGER NOT NULL DEFAULT 0, -- 1 = blokující chyba
-    value           TEXT,                   -- normalizovaná hodnota (string)
-    error           TEXT,                   -- chybová zpráva
-    warning         TEXT,                   -- varování (neblokující)
-    FOREIGN KEY (validation_id) REFERENCES track_validation(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_tvc_validation ON track_validation_checks(validation_id);
-CREATE INDEX IF NOT EXISTS idx_tvc_check      ON track_validation_checks(check_name, ok);
-CREATE INDEX IF NOT EXISTS idx_tvc_track      ON track_validation_checks(track_id, check_name);
+CREATE INDEX IF NOT EXISTS idx_tv_file     ON track_validation(file_exists_ok);
+CREATE INDEX IF NOT EXISTS idx_tv_isrc     ON track_validation(isrc_ok);
 """
 
 
@@ -181,10 +197,11 @@ def save_validation_results(
     validation_results: list,
     validated_at: str,
 ) -> None:
-    """Uloží výsledky validace z music-utils do track_validation a track_validation_checks.
+    """Uloží výsledky validace z music-utils do track_validation.
 
-    Každý TrackValidation objekt odpovídá jednomu řádku v track_validation;
-    každý CheckResult z details odpovídá jednomu řádku v track_validation_checks.
+    Každý TrackValidation objekt z run_validation() odpovídá jednomu řádku.
+    Výsledky jednotlivých kontrol jsou uloženy do dedikovaných sloupců
+    (<kontrola>_ok, <kontrola>_val, <kontrola>_msg).
 
     Args:
         conn:               Připojení k playlist.db.
@@ -192,62 +209,103 @@ def save_validation_results(
         validation_results: Seznam TrackValidation objektů z run_validation().
         validated_at:       ISO datetime string kdy proběhla validace.
     """
-    # Mapování detail key → error kódy (dle music-utils validate_all)
-    # check_name v details → množina kódů v tv.errors (blokující chyba jen pokud se průsečík neprázdný)
-    CHECK_TO_ERRORS: dict[str, set[str]] = {
-        "file_exists":  {"no_file"},
-        "lang":         {"no_lang"},
-        "isrc":         {"no_isrc", "isrc_invalid"},
-        "year":         {"no_year", "year_range"},
-        "duration":     {"duration_mismatch"},
-        "path_format":  {"path_format"},
-    }
-
+    rows = []
     for tv in validation_results:
-        errors_csv   = ",".join(tv.errors)   if tv.errors   else None
-        warnings_csv = ",".join(tv.warnings) if tv.warnings else None
-        tv_errors_set = set(tv.errors or [])
+        d = tv.details or {}
 
-        cur = conn.execute(
-            """
-            INSERT OR REPLACE INTO track_validation
-                (playlist_id, track_id, validated_at, passed, errors, warnings)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (playlist_id, tv.track_id, validated_at, int(tv.passed), errors_csv, warnings_csv),
+        def _ok(key):
+            cr = d.get(key)
+            return int(cr.ok) if cr is not None else None
+
+        def _val(key):
+            cr = d.get(key)
+            return str(cr.value) if cr is not None and cr.value is not None else None
+
+        def _int_val(key):
+            cr = d.get(key)
+            if cr is None or cr.value is None:
+                return None
+            try:
+                return int(cr.value)
+            except (TypeError, ValueError):
+                return None
+
+        def _float_val(key):
+            cr = d.get(key)
+            if cr is None or cr.value is None:
+                return None
+            try:
+                return float(cr.value)
+            except (TypeError, ValueError):
+                return None
+
+        def _msg(key):
+            cr = d.get(key)
+            if cr is None:
+                return None
+            return cr.error or cr.warning or None
+
+        rows.append((
+            playlist_id,
+            tv.track_id,
+            validated_at,
+            int(tv.passed),
+            # file_exists
+            _ok("file_exists"),
+            _msg("file_exists"),
+            # lang
+            _ok("lang"),
+            _val("lang"),
+            _msg("lang"),
+            # isrc
+            _ok("isrc"),
+            _val("isrc"),
+            _msg("isrc"),
+            # year
+            _ok("year"),
+            _int_val("year"),
+            _msg("year"),
+            # duration
+            _ok("duration"),
+            _float_val("duration"),
+            _msg("duration"),
+            # track_number
+            _ok("track_number"),
+            _int_val("track_number"),
+            # album_code
+            _ok("album_code"),
+            _val("album_code"),
+            # path_format
+            _ok("path_format"),
+            _msg("path_format"),
+        ))
+
+    conn.executemany(
+        """
+        INSERT OR REPLACE INTO track_validation (
+            playlist_id, track_id, validated_at, passed,
+            file_exists_ok, file_exists_msg,
+            lang_ok, lang_val, lang_msg,
+            isrc_ok, isrc_val, isrc_msg,
+            year_ok, year_val, year_msg,
+            duration_ok, duration_val, duration_msg,
+            track_number_ok, track_number_val,
+            album_code_ok, album_code_val,
+            path_format_ok, path_format_msg
+        ) VALUES (
+            ?, ?, ?, ?,
+            ?, ?,
+            ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?,
+            ?, ?, ?,
+            ?, ?,
+            ?, ?,
+            ?, ?
         )
-        validation_id = cur.lastrowid
-
-        # Jednotlivé kontroly z details
-        check_rows = []
-        for check_name, result in (tv.details or {}).items():
-            # is_blocking = 1 pokud tento check selhal A odpovídající error kód je v tv.errors
-            error_codes = CHECK_TO_ERRORS.get(check_name, set())
-            is_blocking = int(
-                not result.ok and bool(error_codes & tv_errors_set)
-            )
-            value = str(result.value) if result.value is not None else None
-            check_rows.append((
-                validation_id,
-                tv.track_id,
-                check_name,
-                int(result.ok),
-                is_blocking,
-                value,
-                result.error,
-                result.warning,
-            ))
-
-        if check_rows:
-            conn.executemany(
-                """
-                INSERT INTO track_validation_checks
-                    (validation_id, track_id, check_name, ok, is_blocking, value, error, warning)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                check_rows,
-            )
-
+        """,
+        rows,
+    )
     conn.commit()
     logger.debug(
         "save_validation_results: playlist #%d, %d tracků uloženo",
