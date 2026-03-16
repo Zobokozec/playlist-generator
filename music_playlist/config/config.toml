@@ -1,0 +1,43 @@
+# music-playlist – konfigurace generátoru
+# Dokumentace: README.md
+
+# ── Pevné ID z DB ──────────────────────────────────────────────────────────────
+# ID kategorie "Jazyk" v tabulce characteristic_categories.
+# Tato kategorie funguje jako gate – bez jazyka track nikdy nevstoupí do playlistu.
+lang_category_id = 3
+
+# Tolerance délky pro validaci (sekundy)
+duration_tolerance_sec = 5
+
+# ── Cooldown (hodiny) ───────────────────────────────────────────────────────────
+[cooldown]
+track_hours  = 24   # Track nesmí hrát znovu do N hodin
+album_hours  = 24   # Full album nesmí hrát znovu do N hodin (single/EP neblokují)
+artist_hours = 6    # Interpret nesmí hrát znovu do N hodin
+
+# ── Typy alb ───────────────────────────────────────────────────────────────────
+[album]
+single_max_tracks = 3   # ≤ 3 tracky → 'single'
+ep_max_tracks     = 7   # ≤ 7 tracků  → 'ep', jinak → 'full'
+
+# ── Databáze ───────────────────────────────────────────────────────────────────
+[database]
+playlist_db = "data/playlist.db"   # Vlastní SQLite (playlists, history, album_info)
+music_db    = "data/music.db"      # Sdílená SQLite cache (file_cache)
+# MariaDB (music-twar) se konfiguruje ve svém vlastním modulu
+
+# ── Cesty ──────────────────────────────────────────────────────────────────────
+[paths]
+music_root   = "X:\\MUSIC"                       # Kořen hudebních souborů
+presets_dir  = "music_playlist/config/presets"   # Adresář s YAML/TOML presety
+exports_dir  = "data/exports"                    # Výstupní adresář pro XML exporty
+export_format = "mlp"                            # Přípona exportovaných souborů
+
+# ── Generátor ──────────────────────────────────────────────────────────────────
+[generator]
+max_iterations       = 10000   # Max iterací v selektoru (bezpečnostní pojistka)
+default_track_duration = 210   # Fallback délka tracku (3.5 min) pokud není v DB
+
+# ── Logování ───────────────────────────────────────────────────────────────────
+[logging]
+level = "INFO"   # DEBUG | INFO | WARNING | ERROR
