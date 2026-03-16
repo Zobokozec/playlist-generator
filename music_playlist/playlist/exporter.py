@@ -32,18 +32,9 @@ SELECT
     m.id            AS music_id,
     m.name          AS title,
     m.pronunciation,
-    m.description,
-    a.name          AS album_name
+    m.description
 FROM music m
-LEFT JOIN albums a ON m.album = a.id
 WHERE m.id IN ({placeholders})
-"""
-
-# SQL pro pronunciation entit (interpretů) – volitelné
-_ENTITY_META_SQL = """
-SELECT id, name, pronunciation
-FROM entities
-WHERE id IN ({placeholders})
 """
 
 
@@ -265,35 +256,13 @@ def _fetch_export_metadata(
 
     music_meta = {r["music_id"]: r for r in rows}
 
-    # Entity pronunciations – batch dotaz na entities
-    all_entity_ids = list({
-        eid
-        for t in selected
-        for eid in t.get("entity_ids", [])
-    })
-    entity_pronunciation: dict[int, str] = {}
-    if all_entity_ids:
-        ph = ",".join(["%s"] * len(all_entity_ids))
-        try:
-            ent_rows = context.twar.dotaz_dict(
-                _ENTITY_META_SQL.format(placeholders=ph),
-                all_entity_ids,
-            )
-            entity_pronunciation = {
-                r["id"]: r.get("pronunciation", "") or ""
-                for r in ent_rows
-            }
-        except Exception as exc:
-            logger.warning("export: nelze načíst entity pronunciation: %s", exc)
-
-    # Sloučení: přidej artist_pronunciation do každého záznamu
+    # Přidej artist_pronunciation z entity_map (načteno při initu)
     for t in selected:
         mid = t["music_id"]
-        entity_ids = t.get("entity_ids", [])
         pronunciations = [
-            entity_pronunciation[eid]
-            for eid in entity_ids
-            if entity_pronunciation.get(eid)
+            context.entity_map.get(eid, {}).get("pronunciation", "")
+            for eid in t.get("entity_ids", [])
+            if context.entity_map.get(eid, {}).get("pronunciation")
         ]
         if mid in music_meta:
             music_meta[mid]["artist_pronunciation"] = ", ".join(pronunciations)
@@ -338,7 +307,7 @@ def _build_track_export_dict(
     style: list[str] = []
     keywords: list[str] = []
 
-    for cat_id, char_ids in track.get("chars_by_cat", {}).items():
+    for _, char_ids in track.get("chars_by_cat", {}).items():
         for cid in char_ids:
             info = context.char_map.get(cid, {})
             char_name = info.get("name", str(cid))
@@ -361,7 +330,7 @@ def _build_track_export_dict(
         "pronunciation":        meta.get("pronunciation") or "",
         "artist_pronunciation": meta.get("artist_pronunciation") or "",
         "year":                 track.get("year"),
-        "album":                meta.get("album_name") or "",
+        "album":                context.album_map.get(track.get("album_id", 0), {}).get("name", ""),
         "description":          meta.get("description") or "",
         "language":             language,
         "tempo":                tempo,

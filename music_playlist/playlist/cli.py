@@ -144,7 +144,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
     logger.info("Scheduled: %s, Duration: %ds", scheduled_start, duration_sec)
 
     logger.info("=== HARD FILTER ===")
-    candidates = run_hard_filter(context.twar, cfg.LANG_CATEGORY_ID)
+    candidates = run_hard_filter(context.twar)
     logger.info("Hard filter: %d kandidátů", len(candidates))
 
     logger.info("=== ENRICH ===")

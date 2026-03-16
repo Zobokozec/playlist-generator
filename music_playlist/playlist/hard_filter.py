@@ -9,56 +9,57 @@ Blocking podmínky (nikdy se neodstraňují):
 from __future__ import annotations
 
 HARD_FILTER_SQL = """
-SELECT
-    m.id                                                            AS music_id,
-    m.album                                                         AS album_id,
-    m.duration,
-    m.year,
-    m.recording_code                                                AS isrc,
-    CONCAT('[', GROUP_CONCAT(DISTINCT me.entity_id ORDER BY me.entity_id), ']')
-                                                                    AS entity,
-    CONCAT('{', GROUP_CONCAT(
-        DISTINCT CONCAT(ch.id, ':', ch.category_id)
-        ORDER BY ch.id
-    ), '}')                                                         AS chars_ids
-FROM music m
-JOIN music_chars mc     ON mc.music_id        = m.id
-JOIN characteristics ch ON ch.id              = mc.characteristic_id
-LEFT JOIN music_entities me ON me.music_id    = m.id
-WHERE m.deleted = 0
-  AND EXISTS (
-      SELECT 1 FROM music_chars mc2
-      JOIN characteristics ch2 ON ch2.id = mc2.characteristic_id
-      WHERE mc2.music_id   = m.id
-        AND ch2.category_id = :lang_category_id
-  )
-GROUP BY m.id, m.album, m.duration, m.year, m.recording_code
+select m.id as music_id,
+	m.album as album_id,
+    m.duration, -- délka
+    m.year, -- rok 
+	concat('[', GROUP_CONCAT(distinct en.entity), ']') as entity, -- list of entities
+    concat('{', GROUP_CONCAT(CONCAT(ch.id, ':', ch.category)), '}') as chars_ids,
+    -- ch.category, 
+    -- ch.id as characteristic
+    m.recording_code as isrc
+    
+    
+from music_characteristics_view mcv -- charakteristiky hudby a alb
+inner join music m on m.id = mcv.subject_1 -- připoj hudbu
+inner join music_media mm on m.id = mm.music -- připoj nosiče
+inner join characteristics ch on mcv.subject_2 = ch.id -- připoj charakteristiky
+inner join (
+	SELECT eu.entity, eu.subject_id as track_id -- načti music.id a entitu
+	from entity_usage eu
+    INNER JOIN binary_assoc eur ON eur.subject_1 = eu.id 
+		AND eur.subject_type_1 = 14 -- entity_usage
+        AND eur.subject_type_2 = 13 -- role_entity
+        AND eur.assoc_type = 3 -- entityUsageRole
+    where eu.subject_type in (6, 12) -- usage je v music, music album
+		and eur.subject_2 in (5,6) -- role je skupina nebo interpret
+	group by eu.entity, track_id -- set entity a hudbu
+	order by track_id, eu.entity -- seřaď podle entity a hudby
+    ) en on m.id = en.track_id
+
+where m.deleted = 0 -- není smazaná hudba 
+    and duration > 0 -- je delší než 0
+    and year is not null -- má zadaný rok
+    and mm.medium_type in (199,205) -- je na CD nebo PC
+    and not exists(
+		select 1 
+        from music_characteristics_view mcx 
+        where mcx.subject_1 = m.id 
+        and mcx.subject_2 in (select id from characteristics where category = 3)
+        ) -- nemá technickou charakteristiku
+	and (year > 2000 or ch.id = 904) -- je novější než 2000 nebo je evergreen
+ group by m.id
+
 """
 
 
-def build_hard_filter_query() -> str:
-    """Vrátí SQL string pro hard filter.
-
-    Parametry dotazu:
-        :lang_category_id  – ID kategorie 'Jazyk' z DB (gate podmínka)
-
-    Returns:
-        SQL string s pojmenovanými parametry kompatibilními s MariaDB klientem.
-    """
-    return HARD_FILTER_SQL
-
-
-def run_hard_filter(twar, lang_category_id: int) -> list[dict]:
+def run_hard_filter(twar) -> list[dict]:
     """Spustí hard filter dotaz a vrátí raw řádky.
 
     Args:
-        twar:              MariaDB klient s metodou dotaz_dict(sql, params)
-        lang_category_id:  ID kategorie Jazyk z DB
+        twar: MariaDB klient s metodou dotaz_dict(sql, params)
 
     Returns:
         Seznam dict řádků z DB.
     """
-    return twar.dotaz_dict(
-        HARD_FILTER_SQL,
-        {"lang_category_id": lang_category_id},
-    )
+    return twar.dotaz_dict(HARD_FILTER_SQL)

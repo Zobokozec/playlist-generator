@@ -36,7 +36,7 @@ class PlaylistContext:
         logger.info("PlaylistContext: načítám lookup mapy…")
         self.char_map: dict[int, dict] = self._load_char_map()
         self.album_map: dict[int, dict] = self._load_album_map()
-        self.entity_map: dict[int, str] = self._load_entity_map()
+        self.entity_map: dict[int, dict] = self._load_entity_map()
         logger.info(
             "PlaylistContext: %d charakteristik, %d alb, %d entit",
             len(self.char_map), len(self.album_map), len(self.entity_map),
@@ -53,8 +53,8 @@ class PlaylistContext:
         rows = self.twar.dotaz_dict("""
             SELECT ch.id, ch.name, cc.id AS category_id, cc.name AS category
             FROM characteristics ch
-            JOIN characteristic_categories cc ON ch.category_id = cc.id
-            WHERE ch.deleted = 0
+            JOIN characteristic_categories cc ON ch.category = cc.id
+            WHERE ch.deleted = 0 and usage_ = 1
         """)
         return {
             r["id"]: {
@@ -72,16 +72,20 @@ class PlaylistContext:
         """
         cfg = self.config
         rows = self.twar.dotaz_dict("""
-            SELECT a.id, a.typ, a.cislo, COUNT(m.id) AS track_count
-            FROM albums a
-            LEFT JOIN music m ON m.album = a.id AND m.deleted = 0
-            GROUP BY a.id, a.typ, a.cislo
+            SELECT a.id, a.name, a.name_pronunciation, a.year, a.country, a.notes, COUNT(m.id) AS track_count
+            FROM music m
+            LEFT JOIN music_albums a ON m.album = a.id AND m.deleted = 0
+            WHERE a.deleted = 0
+            GROUP BY a.id
         """)
         return {
             r["id"]: {
-                "typ": r["typ"],
-                "cislo": r["cislo"],
-                "track_count": r["track_count"],
+                "name":              r.get("name") or "",
+                "name_pronunciation": r.get("name_pronunciation") or "",
+                "year":              r.get("year"),
+                "country":           r.get("country"),
+                "notes":             r.get("notes") or "",
+                "track_count":       r["track_count"],
                 "album_type": (
                     "single" if r["track_count"] <= cfg.ALBUM_SINGLE_MAX_TRACKS else
                     "ep"     if r["track_count"] <= cfg.ALBUM_EP_MAX_TRACKS     else
@@ -91,14 +95,24 @@ class PlaylistContext:
             for r in rows
         }
 
-    def _load_entity_map(self) -> dict[int, str]:
+    def _load_entity_map(self) -> dict[int, dict]:
         """
-        {entity_id: 'Chris Tomlin'}
+        {entity_id: {'name': 'Chris Tomlin', 'pronunciation': 'Kris Tomlin', 'notes': ''}}
         """
         rows = self.twar.dotaz_dict("""
-            SELECT id, name FROM entities WHERE deleted = 0
+            SELECT e.id, e.full_name as name, e.pronunciation, e.notes from entity_usage
+            inner join entities e on entity = e.id
+            where subject_type in ( 6, 12)
+            group by entity
         """)
-        return {r["id"]: r["name"] for r in rows}
+        return {
+            r["id"]: {
+                "name":          r["name"],
+                "pronunciation": r.get("pronunciation") or "",
+                "notes":         r.get("notes") or "",
+            }
+            for r in rows
+        }
 
     # ------------------------------------------------------------------
     # Helper lookups
@@ -114,4 +128,4 @@ class PlaylistContext:
 
     def entity_name(self, entity_id: int) -> str:
         """Vrátí jméno entity nebo str(entity_id)."""
-        return self.entity_map.get(entity_id, str(entity_id))
+        return self.entity_map.get(entity_id, {}).get("name", str(entity_id))

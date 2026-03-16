@@ -45,7 +45,7 @@ class PlaylistConfig:
     ALBUM_EP_MAX_TRACKS: int = 7
 
     # --- Pevné category_id z DB ---
-    LANG_CATEGORY_ID: int = 3   # kategorie "Jazyk" – gate pro playlist
+    LANG_CATEGORY_ID: int = 3   # kategorie "Jazyk" – pro cooldown a soft filter
 
     # --- Tolerance délky ---
     DURATION_TOLERANCE_SEC: int = 5
