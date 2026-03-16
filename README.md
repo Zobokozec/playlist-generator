@@ -162,14 +162,52 @@ python -m pytest tests/test_selector.py::TestSelectTracks::test_no_duplicates
 
 ```
 music-playlist
-    +-- music-twar      (MariaDB – hard filter dotaz)
+    +-- twrsql          (MariaDB/PyMySQL – hard filter dotaz, lookup mapy)
+    +-- xmlplaylist     (export do mAirList .mlp souboru)
     +-- musicdb         (SQLite sdilena – file_cache)
     +-- playlist.db     (SQLite vlastni – cooldown, history)
-    +-- music-validator (volitelne – finalni validace)
-    +-- music-config    (konstanty, bude dodan jako samostatny modul)
+    +-- music-utils     (volitelne – validace souboru, ISRC)
 ```
 
 DB klienti jsou **injektovány do PlaylistContext** – modul sám žádné DB připojení neotevírá.
+
+### Napojení na MariaDB (TWRsql)
+
+`music-playlist` komunikuje s MariaDB přes `twrsql`. Připojení se inicializuje
+automaticky z výchozího konfiguračního souboru (nebo vlastního souboru/slovníku).
+
+V `playlist/cli.py` je třída `_TWRsqlAdapter`, která obaluje `TWRsql` a
+překládá rozhraní `dotaz_dict(sql, params)` na `TWRsql.query(sql, params, as_dict=True)`.
+Zároveň převádí pojmenované parametry ze stylu `:name` (SQLite) na `%(name)s` (PyMySQL).
+
+```
+PlaylistContext
+    └── twar = _TWRsqlAdapter(TWRsql())
+                  └── TWRsql(config_file="...")   # vlastní konfig
+                      TWRsql(config_dict={...})   # přímý slovník
+                      TWRsql()                    # výchozí twar.json
+```
+
+### XML export (xmlplaylist)
+
+`xmlplaylist.export_to_xml(mlp_path, track_dict)` generuje mAirList `.mlp` soubory.
+Voláno z `exporter._export_xml()` pro každý track v playlistu.
+
+Metadata pro export se načítají batch dotazem z twar (`title`, `album`, `pronunciation`,
+`description`, `artist_pronunciation`). Charakteristiky se mapují z `char_map` na:
+`language`, `tempo`, `style`, `keywords`.
+
+Výstupní soubor: `<EXPORTS_DIR>/<datum>_<preset>.mlp`
+
+Pokud modul není dostupný, XML export se přeskočí (pouze varování do logu).
+
+**Instalace závislostí:**
+```bash
+pip install -e G:/Python/moduly/TWRsql        # twrsql
+pip install -e ../XMLplaylist                  # xmlplaylist
+pip install -e .                               # music-playlist
+pip install -e ../music-utils                  # volitelné – validace
+```
 
 ## Kritická pravidla (neregredovat)
 

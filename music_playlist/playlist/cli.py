@@ -45,20 +45,48 @@ def _load_params(path: str) -> dict:
     return data
 
 
+class _TWRsqlAdapter:
+    """Adaptér TWRsql → rozhraní dotaz_dict/execute/commit očekávané pipeline.
+
+    Převádí pojmenované parametry ve stylu :name (SQLite/SQLAlchemy)
+    na %(name)s (PyMySQL), který TWRsql/PyMySQL vyžaduje.
+    """
+
+    def __init__(self, db):
+        self._db = db
+
+    @staticmethod
+    def _convert_params(sql: str, params) -> tuple:
+        """Převede :name → %(name)s pokud params je dict, jinak vrátí beze změny."""
+        import re
+        if isinstance(params, dict):
+            sql = re.sub(r":(\w+)", r"%(\1)s", sql)
+        return sql, params
+
+    def dotaz_dict(self, sql: str, params=None) -> list[dict]:
+        sql, params = self._convert_params(sql, params)
+        return self._db.query(sql, params, as_dict=True)
+
+    def execute(self, sql: str, params=None) -> int:
+        sql, params = self._convert_params(sql, params)
+        return self._db.execute(sql, params)
+
+    def commit(self) -> None:
+        self._db.cnx.commit()
+
+
 def _build_context_from_config():
-    """Sestaví PlaylistContext z konfigurace (stub – napojení na DB moduly)."""
-    # Importy externích DB modulů (dodají music-twar, musicdb, playlist.db moduly)
-    # from music_twar import TwarClient
-    # from musicdb import MusicDB
-    # from music_playlist.playlist.db import init_db
+    """Sestaví PlaylistContext z konfigurace."""
+    from twrsql import TWRsql
     from music_playlist.config.config import PlaylistConfig
     from music_playlist.playlist.context import PlaylistContext
 
     cfg = PlaylistConfig.from_toml()
 
-    # --- Stub DB klienti (nahradit skutečnými při integraci) ---
+    twar = _TWRsqlAdapter(TWRsql())
+
+    # --- Stub klienti pro musicdb a playlistdb (zatím bez skutečné DB) ---
     class _StubDB:
-        """Stub DB klient pro vývoj bez skutečné DB."""
         def dotaz_dict(self, sql, params=None):
             return []
         def execute(self, sql, params=None):
@@ -66,7 +94,6 @@ def _build_context_from_config():
         def commit(self):
             pass
 
-    twar = _StubDB()
     musicdb = _StubDB()
     playlistdb = _StubDB()
 

@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 
 # Žádné povinné závislosti – DB klienti jsou injektovány externě.
 # Pro Python < 3.11 je potřeba tomli pro čtení TOML konfigurace.
-dependencies = []
+dependencies = ["twrsql", "xmlplaylist"]
 
 [project.optional-dependencies]
 toml = ["tomli>=2.0; python_version < '3.11'"]

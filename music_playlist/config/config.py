@@ -37,7 +37,7 @@ class PlaylistConfig:
 
     # --- Cooldown (hodiny) ---
     COOLDOWN_TRACK_HOURS: int = 24
-    COOLDOWN_ALBUM_HOURS: int = 24
+    COOLDOWN_ALBUM_HOURS: int = 12
     COOLDOWN_ARTIST_HOURS: int = 6
 
     # --- Typy alb (max počet tracků) ---
