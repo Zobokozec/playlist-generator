@@ -1,0 +1,42 @@
+# Preset: Neděle ráno
+# Klidná, duchovní atmosféra – pomalé tempo, převažuje čeština a angličtina
+
+name: nedele_rano
+description: >
+  Neděle ráno – klidná duchovní atmosféra.
+  Méně populárních hitů, více instrumentálních a chvalozpěvů.
+
+# Cílová délka v sekundách (3 hodiny)
+target_duration: 10800
+
+# Kvóty – category_id: {char_id: procenta}
+# category_id 3 = Jazyk, category_id 5 = Nálada/Žánr
+quotas:
+  "3":   # Jazyk
+    "12": 40   # Čeština
+    "15": 40   # Angličtina
+    "20": 20   # Slovenština
+  "5":   # Nálada
+    "45": 50   # Klidná
+    "46": 30   # Chvály
+    "47": 20   # Instrumentální
+
+# Soft filtr pro tento preset
+soft_filter:
+  chars:
+    "3":             # Jazyk
+      include: [12, 15, 20]
+    "5":             # Nálada
+      include: [45, 46, 47, 48]
+  duration:
+    min: 90          # Minimálně 1.5 min
+    max: 480         # Maximálně 8 min
+  year:
+    min: 1970        # Starší nahrávky povoleny
+
+# Tolerance (přetečení cíle o max N sekund)
+tolerance: 60
+
+notes: >
+  Klidný start neděle. Žádné rychlé nebo hlučné tracky.
+  Doporučeno kombinovat s preset nedele_dopoledne.

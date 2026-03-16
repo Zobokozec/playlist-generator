@@ -1,0 +1,21 @@
+{
+  "scheduled_start": "2026-03-15T09:00:00",
+  "duration_sec": 3600,
+  "preset": "nedele_rano",
+  "quotas": {
+    "3": {"12": 40, "15": 40, "20": 20},
+    "5": {"45": 50, "46": 30, "47": 20}
+  },
+  "soft_filter": {
+    "chars": {
+      "3": {"include": [12, 15, 20]},
+      "5": {"include": [45, 46, 47, 48]}
+    },
+    "duration": {"min": 60, "max": 600},
+    "year":     {"min": 1970}
+  },
+  "options": {
+    "output":  "full",
+    "dry_run": false
+  }
+}

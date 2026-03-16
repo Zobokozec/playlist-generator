@@ -1,0 +1,40 @@
+[build-system]
+requires      = ["setuptools>=70"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name        = "music-playlist"
+version     = "0.1.0"
+description = "Generátor playlistů pro TWR – pipeline výběru písní s kvótami a cooldownem"
+readme      = "README.md"
+requires-python = ">=3.10"
+
+# Žádné povinné závislosti – DB klienti jsou injektovány externě.
+# Pro Python < 3.11 je potřeba tomli pro čtení TOML konfigurace.
+dependencies = []
+
+[project.optional-dependencies]
+toml = ["tomli>=2.0; python_version < '3.11'"]
+dev  = [
+    "pytest>=7",
+    "music-utils",                          # pip install -e ../music-utils
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.scripts]
+music-playlist = "music_playlist.playlist.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["music_playlist*"]
+
+[tool.pytest.ini_options]
+testpaths    = ["tests"]
+addopts      = "-v --import-mode=importlib"
+log_cli      = true
+log_cli_level = "WARNING"
+pythonpath   = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
