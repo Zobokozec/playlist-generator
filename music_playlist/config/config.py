@@ -64,6 +64,9 @@ class PlaylistConfig:
     MAX_SELECTOR_ITERATIONS: int = 10_000
     DEFAULT_TRACK_DURATION: int = 210   # 3.5 minuty fallback
 
+    # --- Vyloučené duplicity (music_id) ---
+    EXCLUDED_MUSIC_IDS: list = field(default_factory=list)
+
     # --- Logování ---
     LOG_LEVEL: str = "INFO"
 
@@ -101,6 +104,13 @@ class PlaylistConfig:
         generator = data.get("generator", {})
         logging_cfg = data.get("logging", {})
 
+        # Kořen projektu = 3 úrovně nad config.toml (playlist-generator/)
+        project_root = toml_path.resolve().parent.parent.parent
+
+        def _resolve(val: str) -> str:
+            p = Path(val)
+            return str((project_root / p).resolve()) if not p.is_absolute() else val
+
         return cls(
             COOLDOWN_TRACK_HOURS=cooldown.get("track_hours", cls.COOLDOWN_TRACK_HOURS),
             COOLDOWN_ALBUM_HOURS=cooldown.get("album_hours", cls.COOLDOWN_ALBUM_HOURS),
@@ -110,14 +120,15 @@ class PlaylistConfig:
             LANG_CATEGORY_ID=data.get("lang_category_id", cls.LANG_CATEGORY_ID),
             DURATION_TOLERANCE_SEC=data.get("duration_tolerance_sec", cls.DURATION_TOLERANCE_SEC),
             MUSIC_ROOT_DIR=paths.get("music_root", cls.MUSIC_ROOT_DIR),
-            PLAYLIST_DB=db.get("playlist_db", cls.PLAYLIST_DB),
-            MUSIC_DB=db.get("music_db", cls.MUSIC_DB),
+            PLAYLIST_DB=_resolve(db.get("playlist_db", cls.PLAYLIST_DB)),
+            MUSIC_DB=_resolve(db.get("music_db", cls.MUSIC_DB)),
             PRESETS_DIR=paths.get("presets_dir", cls.PRESETS_DIR),
             EXPORTS_DIR=paths.get("exports_dir", cls.EXPORTS_DIR),
             EXPORT_FORMAT=paths.get("export_format", cls.EXPORT_FORMAT),
             MAX_SELECTOR_ITERATIONS=generator.get("max_iterations", cls.MAX_SELECTOR_ITERATIONS),
             DEFAULT_TRACK_DURATION=generator.get("default_track_duration", cls.DEFAULT_TRACK_DURATION),
             LOG_LEVEL=logging_cfg.get("level", cls.LOG_LEVEL),
+            EXCLUDED_MUSIC_IDS=data.get("excluded_music_ids", []),
         )
 
     @classmethod

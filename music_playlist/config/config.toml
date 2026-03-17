@@ -23,7 +23,7 @@ ep_max_tracks     = 7   # ≤ 7 tracků  → 'ep', jinak → 'full'
 # ── Databáze ───────────────────────────────────────────────────────────────────
 [database]
 playlist_db = "data/playlist.db"   # Vlastní SQLite (playlists, history, album_info)
-music_db    = "data/music.db"      # Sdílená SQLite cache (file_cache)
+music_db    = "../musicdb.mldb"      # Sdílená SQLite cache (file_cache)
 # MariaDB (music-twar) se konfiguruje ve svém vlastním modulu
 
 # ── Cesty ──────────────────────────────────────────────────────────────────────
@@ -41,3 +41,7 @@ default_track_duration = 210   # Fallback délka tracku (3.5 min) pokud není v 
 # ── Logování ───────────────────────────────────────────────────────────────────
 [logging]
 level = "INFO"   # DEBUG | INFO | WARNING | ERROR
+
+# ── Vyloučené duplicity ─────────────────────────────────────────────────────────
+# music_id tracků které jsou v mAirList duplicitně – odstraň ze seznamu až opravíš v DB
+excluded_music_ids = [32868,35832,35580,33695,32844,32843,32842,32841,32840,32839,32838,32837,32836,32835,32833,30535,30534,30533,30532,30531,30530,30529,30528,30527,30526,30525,25745,23236,22594,21460,21366,21365,21364,21363,21362,21361,21360,21359,21358,21204,19938,19088,19087,18240,18239,18238,18237,18236,18235,18234,18233,18107,18106,18105,18104,18103,18102,18101,18100,18099,18098,17886,17885,17884,17883,17666,10272,7429,7428,7423,7162,7055,2362,2032,1568]

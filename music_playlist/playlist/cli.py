@@ -45,6 +45,33 @@ def _load_params(path: str) -> dict:
     return data
 
 
+class _StubDB:
+    """Stub DB klient – vrací prázdné výsledky (pro nepřipojené DB)."""
+    def dotaz_dict(self, *_, **__): return []
+    def execute(self, *_, **__): pass
+    def commit(self): pass
+
+
+class _SQLiteClient:
+    """Jednoduchý SQLite klient s rozhraním dotaz_dict/execute/commit."""
+
+    def __init__(self, path: str):
+        import sqlite3
+        self._conn = sqlite3.connect(path)
+        self._conn.row_factory = sqlite3.Row
+
+    def dotaz_dict(self, sql: str, params=None) -> list[dict]:
+        cur = self._conn.execute(sql, params or [])
+        return [dict(r) for r in cur.fetchall()]
+
+    def execute(self, sql: str, params=None) -> int:
+        cur = self._conn.execute(sql, params or [])
+        return cur.rowcount
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+
 class _TWRsqlAdapter:
     """Adaptér TWRsql → rozhraní dotaz_dict/execute/commit očekávané pipeline.
 
@@ -84,17 +111,17 @@ def _build_context_from_config():
     cfg = PlaylistConfig.from_toml()
 
     twar = _TWRsqlAdapter(TWRsql())
+    musicdb = _SQLiteClient(cfg.MUSIC_DB)
 
-    # --- Stub klienti pro musicdb a playlistdb (zatím bez skutečné DB) ---
+    # --- Stub klient pro playlistdb (zatím bez skutečné DB) ---
     class _StubDB:
-        def dotaz_dict(self, sql, params=None):
+        def dotaz_dict(self, _sql, _params=None):
             return []
-        def execute(self, sql, params=None):
+        def execute(self, _sql, _params=None):
             pass
         def commit(self):
             pass
 
-    musicdb = _StubDB()
     playlistdb = _StubDB()
 
     return PlaylistContext(twar, musicdb, playlistdb, cfg)

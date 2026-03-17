@@ -33,17 +33,32 @@ def enrich_tracks(rows: list[dict], context: "PlaylistContext") -> list[dict]:
     if not rows:
         return []
 
-    # Batch dotaz do SQLite (jeden dotaz pro všechny tracks)
-    ids = [r["music_id"] for r in rows]
-    placeholders = ",".join("?" * len(ids))
-    file_data: dict[int, dict] = {
-        r["track_id"]: r
-        for r in context.musicdb.dotaz_dict(
-            f"SELECT track_id, file_path, file_dur_sec, intro_sec, outro_sec, file_exists "
-            f"FROM file_cache WHERE track_id IN ({placeholders})",
-            ids,
-        )
-    }
+    # Sestav NOT IN z configu (duplicity k ručnímu odstranění)
+    excluded = context.config.EXCLUDED_MUSIC_IDS
+    excl_clause = ""
+    if excluded:
+        excl_placeholders = ",".join(f'"H{mid:06d}"' for mid in excluded)
+        excl_clause = f" AND externalid NOT IN ({excl_placeholders})"
+
+    # Načti items z musicdb; externalid "H032868" → music_id 32868
+    # TODO: intro_sec a outro_sec jsou v jiné tabulce – doplnit join
+    raw_items = context.musicdb.dotaz_dict(
+        f'SELECT externalid, filename AS file_path, duration AS file_dur_sec, '
+        f'ic_in.value AS intro_sec, ic_out.value AS outro_sec, 1 AS file_exists '
+        f'FROM items '
+        f'LEFT JOIN item_cuemarkers ic_in  ON ic_in.item  = items.idx AND ic_in.type  = "CueIn" '
+        f'LEFT JOIN item_cuemarkers ic_out ON ic_out.item = items.idx AND ic_out.type = "CueOut" '
+        f'WHERE externalid IS NOT NULL AND items.type = "Music"{excl_clause}'
+    )
+    file_data: dict[int, dict] = {}
+    for r in raw_items:
+        ext = r.get("externalid", "")
+        if ext and ext.startswith("H"):
+            try:
+                music_id = int(ext[1:])
+                file_data[music_id] = r
+            except ValueError:
+                pass
     logger.debug(
         "enrich_tracks: %d tracků, %d záznamů v file_cache",
         len(rows), len(file_data),
@@ -66,7 +81,9 @@ def enrich_tracks(rows: list[dict], context: "PlaylistContext") -> list[dict]:
             cid_s, cat_s = pair.split(":", 1)
             try:
                 cid, cat_id = int(cid_s), int(cat_s)
-                chars_by_cat.setdefault(cat_id, []).append(cid)
+                cat_list = chars_by_cat.setdefault(cat_id, [])
+                if cid not in cat_list:
+                    cat_list.append(cid)
             except ValueError:
                 continue
 
