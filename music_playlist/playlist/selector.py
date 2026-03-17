@@ -38,13 +38,30 @@ def select_tracks(
     if not tracks:
         return []
 
-    # Normalizace kvót (procenta → float 0–1)
+    # Normalizace kvót per kategorie (procenta → float 0–1)
+    # Klíč -cat_id rezervován pro bucket "ostatní" dané kategorie.
     flat_quotas: dict[int, float] = {}
-    for cat_quotas in quotas.values():
+    others_cats: dict[int, set[int]] = {}   # cat_id → sada char_id které PATŘÍ do kvót
+
+    for cat_id, cat_quotas in quotas.items():
+        cat_id = int(cat_id)
+        normalized: dict[int, float] = {}
         for char_id, pct in cat_quotas.items():
-            char_id = int(char_id)
             pct_f = float(pct) / 100.0 if float(pct) > 1.0 else float(pct)
-            flat_quotas[char_id] = pct_f
+            normalized[int(char_id)] = pct_f
+
+        total = sum(normalized.values())
+        if total > 1.001:
+            # Součet > 100 % → přepočítej proporcionálně
+            normalized = {cid: p / total for cid, p in normalized.items()}
+            total = 1.0
+
+        flat_quotas.update(normalized)
+        others_cats[cat_id] = set(normalized.keys())
+
+        others_pct = 1.0 - total
+        if others_pct > 0.001:
+            flat_quotas[-cat_id] = others_pct  # záporný klíč = "ostatní pro tuto kategorii"
 
     if not flat_quotas:
         logger.warning("select_tracks: prázdné kvóty, vybírám náhodně")
@@ -59,12 +76,18 @@ def select_tracks(
         return result
 
     # Buckety {char_id: [track, ...]}
+    # Pro záporný klíč -cat_id: tracky které mají v cat_id char MIMO definované kvóty.
     buckets: dict[int, list[dict]] = defaultdict(list)
     for track in tracks:
-        for char_ids in track["chars_by_cat"].values():
-            for char_id in char_ids:
-                if char_id in flat_quotas:
-                    buckets[char_id].append(track)
+        chars_by_cat = track["chars_by_cat"]
+        for char_id in (c for cat_chars in chars_by_cat.values() for c in cat_chars):
+            if char_id in flat_quotas:
+                buckets[char_id].append(track)
+        for cat_id, defined_chars in others_cats.items():
+            if -cat_id in flat_quotas:
+                track_chars = set(chars_by_cat.get(cat_id, []))
+                if track_chars and not (track_chars & defined_chars):
+                    buckets[-cat_id].append(track)
 
     filled_duration: dict[int, float] = defaultdict(float)
     selected_ids: set[int] = set()
