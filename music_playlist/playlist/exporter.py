@@ -266,7 +266,7 @@ def _build_track_export_dict(
     }
     return {
         # Identifikace
-        "idx":                  mid,
+        "idx":                  track.get("db_idx") or mid,
         "externalid":           f"H{mid:06d}",
         "type":                 "Music",
         # Základní metadata
@@ -317,22 +317,35 @@ def _format_output(
 
 def _track_full(track: dict, context: "PlaylistContext") -> dict:
     """Sestaví 'full' výstupní dict pro track."""
+    mid = track["music_id"]
+    album = context.album_map.get(track.get("album_id", 0), {})
+    artist_names = [context.entity_name(e) for e in track.get("entity_ids", [])]
+    artist_pronunciation = ", ".join(
+        context.entity_map.get(eid, {}).get("pronunciation", "")
+        for eid in track.get("entity_ids", [])
+        if context.entity_map.get(eid, {}).get("pronunciation")
+    )
     chars_named = {
         context.char_map.get(cid, {}).get("name", str(cid)): cid
         for char_ids in track.get("chars_by_cat", {}).values()
         for cid in char_ids
     }
     return {
-        "id":           track["music_id"],
-        "title":        track.get("title") or "",
-        "entities":     [context.entity_name(e) for e in track.get("entity_ids", [])],
-        "album_id":     track["album_id"],
-        "year":         track.get("year"),
-        "duration":     track.get("duration"),
-        "net_duration": track.get("net_duration"),
-        "intro_sec":    track.get("intro_sec"),
-        "outro_sec":    track.get("outro_sec"),
-        "file_path":    track.get("file_path"),
-        "isrc":         track.get("isrc"),
-        "chars":        chars_named,
+        "id":                   mid,
+        "idx":                  track.get("db_idx") or mid,
+        "externalid":           f"H{mid:06d}",
+        "title":                track.get("title") or "",
+        "pronunciation":        track.get("pronunciation") or "",
+        "artist":               ", ".join(artist_names),
+        "artist_pronunciation": artist_pronunciation,
+        "album":                album.get("name") or "",
+        "year":                 track.get("year"),
+        "description":          track.get("description") or "",
+        "isrc":                 track.get("isrc"),
+        "duration":             track.get("duration"),
+        "net_duration":         track.get("net_duration"),
+        "intro_sec":            track.get("intro_sec"),
+        "outro_sec":            track.get("outro_sec"),
+        "file_path":            track.get("file_path"),
+        "chars":                chars_named,
     }

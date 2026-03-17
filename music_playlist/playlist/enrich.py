@@ -43,7 +43,7 @@ def enrich_tracks(rows: list[dict], context: "PlaylistContext") -> list[dict]:
     # Načti items z musicdb; externalid "H032868" → music_id 32868
     # TODO: intro_sec a outro_sec jsou v jiné tabulce – doplnit join
     raw_items = context.musicdb.dotaz_dict(
-        f'SELECT externalid, filename AS file_path, duration AS file_dur_sec, '
+        f'SELECT externalid, filename AS file_path, duration AS file_dur_sec, idx, '
         f'ic_in.value AS intro_sec, ic_out.value AS outro_sec, 1 AS file_exists '
         f'FROM items '
         f'LEFT JOIN item_cuemarkers ic_in  ON ic_in.item  = items.idx AND ic_in.type  = "CueIn" '
@@ -103,6 +103,7 @@ def enrich_tracks(rows: list[dict], context: "PlaylistContext") -> list[dict]:
             **row,
             "entity_ids":   entity_ids,
             "chars_by_cat": chars_by_cat,     # {category_id: [char_id, …]}
+            "db_idx":       fc.get("idx"),    # DatabaseID z mAirList (items.idx)
             "file_path":    fc.get("file_path"),
             "file_exists":  bool(fc.get("file_exists", False)),
             "file_dur_sec": fc.get("file_dur_sec"),
