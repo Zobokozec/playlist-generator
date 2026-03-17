@@ -186,17 +186,16 @@ def _export_xml(
         logger.warning("export: prázdný playlist, XML se negeneruje")
         return None
 
-    # --- MLP cesta ---
+    # --- MLP cesta: exports_dir/YYYY_MM_DD/YYYY_MM_DD_(preset).mlp ---
     scheduled_start = params.get("scheduled_start", "")
-    if hasattr(scheduled_start, "strftime"):
-        ts = scheduled_start.strftime("%Y-%m-%d_%H%M")
-    else:
-        ts = str(scheduled_start).replace(":", "").replace(" ", "_")[:16]
+    if isinstance(scheduled_start, str):
+        from datetime import datetime as _dt
+        scheduled_start = _dt.fromisoformat(scheduled_start)
+    date_str = scheduled_start.strftime("%Y_%m_%d") if hasattr(scheduled_start, "strftime") else "unknown"
     preset = params.get("preset", "playlist")
-    filename = f"{ts}_{preset}.mlp"
-    exports_dir = Path(context.config.EXPORTS_DIR)
-    exports_dir.mkdir(parents=True, exist_ok=True)
-    mlp_path = str(exports_dir / filename)
+    day_dir = Path(context.config.EXPORTS_DIR) / date_str
+    day_dir.mkdir(parents=True, exist_ok=True)
+    mlp_path = str(day_dir / f"{date_str}_{preset}.mlp")
 
     # --- Sestav seznam tracků a exportuj najednou ---
     track_dicts = [_build_track_export_dict(t, context) for t in selected]
@@ -237,30 +236,40 @@ def _build_track_export_dict(
         if context.entity_map.get(eid, {}).get("pronunciation")
     )
 
-    # Mapování charakteristik podle kategorie
+    # Mapování category_id → pole exportu
+    # single = první hodnota (str), multi = seznam (list)
+    _CAT_LANGUAGE = 4   # Jazyk
+    _CAT_STYLE    = 2   # Žánr
+    _CAT_MOOD     = 6   # Nálada → keywords (dokud nemá vlastní kategorii tempo)
+    #_CAT_TEMPO = X
+
     language: str = ""
-    tempo: str = ""
     style: list[str] = []
     keywords: list[str] = []
 
-    for _, char_ids in track.get("chars_by_cat", {}).items():
+    for cat_id, char_ids in track.get("chars_by_cat", {}).items():
         for cid in char_ids:
-            info = context.char_map.get(cid, {})
-            char_name = info.get("name", str(cid))
-            cat_name = info.get("category", "").lower()
-
-            if "jazyk" in cat_name or "language" in cat_name:
+            char_name = context.char_map.get(cid, {}).get("name", str(cid))
+            if cat_id == _CAT_LANGUAGE:
                 if not language:
                     language = char_name
-            elif "tempo" in cat_name:
-                if not tempo:
-                    tempo = char_name
-            elif "žánr" in cat_name or "zanr" in cat_name or "styl" in cat_name or "style" in cat_name:
+            elif cat_id == _CAT_STYLE:
                 style.append(char_name)
             else:
                 keywords.append(char_name)
 
+    mid = track["music_id"]
+    chars = {
+        "language": language,
+        "style":    style,
+        "keywords": keywords,
+    }
     return {
+        # Identifikace
+        "idx":                  mid,
+        "externalid":           f"H{mid:06d}",
+        "type":                 "Music",
+        # Základní metadata
         "title":                track.get("title") or "",
         "artist":               artist,
         "pronunciation":        track.get("pronunciation") or "",
@@ -268,12 +277,14 @@ def _build_track_export_dict(
         "year":                 track.get("year"),
         "album":                context.album_map.get(track.get("album_id", 0), {}).get("name", ""),
         "description":          track.get("description") or "",
-        "language":             language,
-        "tempo":                tempo,
-        "style":                style,
-        "keywords":             keywords,
+        # Technická data
         "duration":             track.get("net_duration") or track.get("duration") or 0.0,
         "filename":             track.get("file_path") or "",
+        # Charakteristiky – top-level i vnořené
+        "language":             language,
+        "style":                style,
+        "keywords":             keywords,
+        "chars":                chars,
     }
 
 

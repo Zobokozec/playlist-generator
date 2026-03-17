@@ -13,7 +13,7 @@ select m.id as music_id,
 	m.album as album_id,
     m.name as title,
     m.name_pronunciation as pronunciation,
-    m.description,
+    m.notes as description,
     m.duration, -- délka
     m.year, -- rok
 	concat('[', GROUP_CONCAT(distinct en.entity), ']') as entity, -- list of entities
