@@ -35,7 +35,8 @@ _DEFAULT_CONFIG_TOML = Path(__file__).parent / "config.toml"
 class PlaylistConfig:
     """Konfigurace generátoru playlistů."""
 
-    # --- Cooldown (hodiny) ---
+    # --- Cooldown (hodiny) – inter-playlist (history) i intra-playlist (session) ---
+    # Intra-playlist mezery se odvozují v CLI jako COOLDOWN_X_HOURS * 3600.
     COOLDOWN_TRACK_HOURS: int = 24
     COOLDOWN_ALBUM_HOURS: int = 12
     COOLDOWN_ARTIST_HOURS: int = 6

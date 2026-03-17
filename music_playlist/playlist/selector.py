@@ -12,6 +12,10 @@ from __future__ import annotations
 import logging
 import random
 from collections import defaultdict
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .cooldown import InSessionCooldown
 
 logger = logging.getLogger(__name__)
 
@@ -21,16 +25,19 @@ def select_tracks(
     quotas: dict,
     target_duration: float,
     max_iterations: int = 10_000,
+    session_cooldown: "InSessionCooldown | None" = None,
 ) -> list[dict]:
     """Vybere tracky do playlistu podle procentuálních kvót.
 
     Args:
-        tracks:          Tracky po cooldownu (eligible pool).
-        quotas:          Kvóty jako {category_id: {char_id: pct_float}}.
-                         pct_float: 0.0–1.0 nebo 0–100 (normalizuje se).
-                         Např.: {3: {12: 0.40, 15: 0.40}, 5: {45: 0.60}}
-        target_duration: Cílová délka v sekundách.
-        max_iterations:  Maximální počet iterací (bezpečnostní pojistka).
+        tracks:           Tracky po cooldownu (eligible pool).
+        quotas:           Kvóty jako {category_id: {char_id: pct_float}}.
+                          pct_float: 0.0–1.0 nebo 0–100 (normalizuje se).
+                          Např.: {3: {12: 0.40, 15: 0.40}, 5: {45: 0.60}}
+        target_duration:  Cílová délka v sekundách.
+        max_iterations:   Maximální počet iterací (bezpečnostní pojistka).
+        session_cooldown: Volitelný InSessionCooldown – blokuje opakování artistů/alb
+                          v rámci jednoho playlistu na základě virtuálního časového čítače.
 
     Returns:
         Seřazený seznam vybraných tracků (pořadí výběru).
@@ -114,15 +121,24 @@ def select_tracks(
         weights = [needs[c] for c in char_ids]
         chosen_char_id = random.choices(char_ids, weights=weights)[0]
 
-        # Dostupné tracky v bucketu (mimo již vybrané)
-        available = [
-            t for t in buckets.get(chosen_char_id, [])
-            if t["music_id"] not in selected_ids
-        ]
-        if not available:
+        # Dostupné tracky v bucketu (mimo již vybrané, mimo session cooldown)
+        bucket = buckets.get(chosen_char_id, [])
+        not_selected = [t for t in bucket if t["music_id"] not in selected_ids]
+        if not not_selected:
+            # Bucket skutečně vyčerpán – odstraň kvótu
             del active_quotas[chosen_char_id]
             if not active_quotas:
                 break
+            continue
+
+        if session_cooldown is not None:
+            available = [t for t in not_selected if not session_cooldown.is_blocked(t)]
+        else:
+            available = not_selected
+
+        if not available:
+            # Bucket není prázdný, ale vše je dočasně blokováno session cooldownem –
+            # přeskoč tuto iteraci, jiný char_id může být dostupný.
             continue
 
         track = random.choice(available)
@@ -131,6 +147,8 @@ def select_tracks(
         playlist.append(track)
         selected_ids.add(track["music_id"])
         total_duration += dur
+        if session_cooldown is not None:
+            session_cooldown.register(track, dur)
 
         # Aktualizuj filled pro všechny char_id trackku
         for char_ids_in_cat in track["chars_by_cat"].values():

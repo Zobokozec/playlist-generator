@@ -108,12 +108,14 @@ def enrich_tracks(rows: list[dict], context: "PlaylistContext") -> list[dict]:
         except AttributeError:
             keywords = []
 
+        album_info = context.album_map.get(row["album_id"], {}) if row.get("album_id") else {}
         result.append({
             **row,
             "description":  _strip_comments(row.get("description")),
             "entity_ids":   entity_ids,
             "keywords":     keywords,
             "chars_by_cat": chars_by_cat,     # {category_id: [char_id, …]}
+            "album_type":   album_info.get("album_type"),   # 'single'|'ep'|'full'|None
             "db_idx":       fc.get("idx"),    # DatabaseID z mAirList (items.idx)
             "file_path":    fc.get("file_path"),
             "file_exists":  bool(fc.get("file_exists", False)),

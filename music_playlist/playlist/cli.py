@@ -186,7 +186,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
     from music_playlist.playlist.hard_filter import run_hard_filter
     from music_playlist.playlist.enrich import enrich_tracks
     from music_playlist.playlist.soft_filter import soft_filter
-    from music_playlist.playlist.cooldown import apply_cooldown
+    from music_playlist.playlist.cooldown import apply_cooldown, InSessionCooldown
     from music_playlist.playlist.selector import select_tracks
     from music_playlist.playlist.validator import validate_selected
     from music_playlist.playlist.exporter import GeneratorResult, export_playlist
@@ -216,7 +216,18 @@ def cmd_generate(args: argparse.Namespace) -> None:
     after_cooldown, cd_excluded = apply_cooldown(eligible, scheduled_start, context)
 
     logger.info("=== SELECTOR ===")
-    selected = select_tracks(after_cooldown, quotas, float(duration_sec), cfg.MAX_SELECTOR_ITERATIONS)
+    session_cd = InSessionCooldown(
+        artist_gap_sec=cfg.COOLDOWN_ARTIST_HOURS * 3600,
+        album_gap_sec=cfg.COOLDOWN_ALBUM_HOURS * 3600,
+    )
+    selected = select_tracks(
+        after_cooldown, quotas, float(duration_sec),
+        cfg.MAX_SELECTOR_ITERATIONS, session_cd,
+    )
+    logger.info(
+        "Session cooldown: virtuální čas po selekci %.0fs (%.1f min)",
+        session_cd.elapsed_sec, session_cd.elapsed_sec / 60,
+    )
 
     logger.info("=== VALIDACE ===")
     selected_ids = {t["music_id"] for t in selected}
