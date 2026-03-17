@@ -29,20 +29,52 @@ def _setup_logging(verbose: bool = False) -> None:
     )
 
 
+def _load_yaml(path: Path) -> dict:
+    import yaml
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
 def _load_params(path: str) -> dict:
-    """Načte a validuje params soubor (JSON nebo YAML)."""
+    """Načte params soubor (JSON nebo YAML) a merguje preset (pokud je uveden).
+
+    Priorita: params > preset > výchozí hodnoty.
+    duration_sec v params přebíjí target_duration z presetu.
+    """
     p = Path(path)
     if not p.exists():
         print(f"[ERROR] Soubor nenalezen: {path}", file=sys.stderr)
         sys.exit(1)
-    with open(p, encoding="utf-8") as f:
-        if p.suffix in (".yaml", ".yml"):
-            import yaml
-            data = yaml.safe_load(f)
-        else:
+
+    if p.suffix in (".yaml", ".yml"):
+        data = _load_yaml(p)
+    else:
+        with open(p, encoding="utf-8") as f:
             data = json.load(f)
+
+    # Načti a merguj preset (preset hodnoty jsou základ, params je přepíše)
+    preset_name = data.get("preset")
+    if preset_name:
+        from music_playlist.config.config import PlaylistConfig
+        cfg = PlaylistConfig.from_toml()
+        preset_path = Path(cfg.PRESETS_DIR) / f"{preset_name}.yaml"
+        if preset_path.exists():
+            preset = _load_yaml(preset_path)
+            # Preset je základ; params přepíše jednotlivé klíče
+            merged = {**preset, **data}
+            # Speciálně: duration_sec přebíjí target_duration z presetu
+            if "duration_sec" not in merged and "target_duration" in preset:
+                merged["duration_sec"] = preset["target_duration"]
+            data = merged
+        else:
+            logger.warning("Preset '%s' nenalezen: %s", preset_name, preset_path)
+
+    # Fallback: target_duration → duration_sec
+    if "duration_sec" not in data and "target_duration" in data:
+        data["duration_sec"] = data["target_duration"]
+
     if "duration_sec" not in data:
-        print("[ERROR] params chybí povinný klíč: duration_sec", file=sys.stderr)
+        print("[ERROR] params chybí duration_sec (ani target_duration v presetu)", file=sys.stderr)
         sys.exit(1)
     return data
 
@@ -68,6 +100,10 @@ class _SQLiteClient:
 
     def execute(self, sql: str, params=None) -> int:
         cur = self._conn.execute(sql, params or [])
+        return cur.rowcount
+
+    def executemany(self, sql: str, params_seq) -> int:
+        cur = self._conn.executemany(sql, params_seq)
         return cur.rowcount
 
     def commit(self) -> None:
@@ -112,19 +148,12 @@ def _build_context_from_config():
 
     cfg = PlaylistConfig.from_toml()
 
+    from music_playlist.playlist.db import init_db
+
     twar = _TWRsqlAdapter(TWRsql())
     musicdb = _SQLiteClient(cfg.MUSIC_DB)
-
-    # --- Stub klient pro playlistdb (zatím bez skutečné DB) ---
-    class _StubDB:
-        def dotaz_dict(self, _sql, _params=None):
-            return []
-        def execute(self, _sql, _params=None):
-            pass
-        def commit(self):
-            pass
-
-    playlistdb = _StubDB()
+    init_db(cfg.PLAYLIST_DB)
+    playlistdb = _SQLiteClient(cfg.PLAYLIST_DB)
 
     return PlaylistContext(twar, musicdb, playlistdb, cfg)
 

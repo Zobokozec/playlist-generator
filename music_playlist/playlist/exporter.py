@@ -237,12 +237,8 @@ def _build_track_export_dict(
         if context.entity_map.get(eid, {}).get("pronunciation")
     )
 
-    # Mapování category_id → pole exportu
-    # single = první hodnota (str), multi = seznam (list)
-    _CAT_LANGUAGE = 4   # Jazyk
-    _CAT_STYLE    = 2   # Žánr
-    _CAT_MOOD     = 6   # Nálada → keywords (dokud nemá vlastní kategorii tempo)
-    #_CAT_TEMPO = X
+    cat_language = context.config.CAT_ID_LANGUAGE
+    cat_style    = context.config.CAT_ID_STYLE
 
     language: str = ""
     style: list[str] = []
@@ -251,10 +247,10 @@ def _build_track_export_dict(
     for cat_id, char_ids in track.get("chars_by_cat", {}).items():
         for cid in char_ids:
             char_name = context.char_map.get(cid, {}).get("name", str(cid))
-            if cat_id == _CAT_LANGUAGE:
+            if cat_id == cat_language:
                 if not language:
                     language = char_name
-            elif cat_id == _CAT_STYLE:
+            elif cat_id == cat_style:
                 style.append(char_name)
             else:
                 keywords.append(char_name)

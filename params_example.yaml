@@ -2,7 +2,7 @@
 # Povinné: duration_sec
 # Runtime: scheduled_start se předává přes --start (nebo zde jako fallback)
 
-duration_sec: 3600
+# duration_sec: 3600
 preset: nedele_rano
 
 # Kvóty: {category_id: {char_id: procento}}

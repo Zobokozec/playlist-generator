@@ -1,10 +1,11 @@
 # music-playlist – konfigurace generátoru
 # Dokumentace: README.md
 
-# ── Pevné ID z DB ──────────────────────────────────────────────────────────────
-# ID kategorie "Jazyk" v tabulce characteristic_categories.
-# Tato kategorie funguje jako gate – bez jazyka track nikdy nevstoupí do playlistu.
-lang_category_id = 3
+# ── Pevné ID kategorií z DB ────────────────────────────────────────────────────
+lang_category_id = 4   # "Jazyk" – gate pro hard filter
+cat_id_language  = 4   # "Jazyk" – export: language pole
+cat_id_style     = 2   # "Žánr"  – export: style pole
+# cat_id_tempo   = ?   # "Tempo" – zatím bez kategorie
 
 # Tolerance délky pro validaci (sekundy)
 duration_tolerance_sec = 5

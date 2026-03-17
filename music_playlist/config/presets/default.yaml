@@ -8,9 +8,11 @@ target_duration: 14400  # 4 hodiny
 
 quotas:
   "4":   # Jazyk
-    "639": 50   # Čeština
-    "667": 35   # Angličtina
+    "639": 45   # Čeština
+    "667": 30   # Angličtina
     "644": 15   # Slovenština
+    # ostatní 10 %
+  
   #"6":   # Nálada
   #  "45": 40   # Klidná
   #  "46": 40   # Chvály
@@ -19,12 +21,16 @@ quotas:
 soft_filter:
   chars:
     "2": #Žánr
-      exclude: [292,472]
+      exclude: # nevybere tyto charakteristiky
+        - 292 # kom. - barok
+        - 472 # metal
+        - 148 # gregoriánský chorál
     "28": # časové
-      include: [652]
-  duration:
+      include: # bere v úvahu jen tyto, ostatní časové ignoruje
+        - 652 # 
+  duration: # sekundy
     min: 60
-    max: 600
+    max: 359
   year:
     min: 1970
 

@@ -45,7 +45,9 @@ class PlaylistConfig:
     ALBUM_EP_MAX_TRACKS: int = 7
 
     # --- Pevné category_id z DB ---
-    LANG_CATEGORY_ID: int = 3   # kategorie "Jazyk" – pro cooldown a soft filter
+    LANG_CATEGORY_ID: int = 4   # kategorie "Jazyk" – gate pro hard filter
+    CAT_ID_LANGUAGE:  int = 4   # kategorie "Jazyk" – export: language pole
+    CAT_ID_STYLE:     int = 2   # kategorie "Žánr"  – export: style pole
 
     # --- Tolerance délky ---
     DURATION_TOLERANCE_SEC: int = 5
@@ -118,6 +120,8 @@ class PlaylistConfig:
             ALBUM_SINGLE_MAX_TRACKS=album.get("single_max_tracks", cls.ALBUM_SINGLE_MAX_TRACKS),
             ALBUM_EP_MAX_TRACKS=album.get("ep_max_tracks", cls.ALBUM_EP_MAX_TRACKS),
             LANG_CATEGORY_ID=data.get("lang_category_id", cls.LANG_CATEGORY_ID),
+            CAT_ID_LANGUAGE=data.get("cat_id_language", cls.CAT_ID_LANGUAGE),
+            CAT_ID_STYLE=data.get("cat_id_style", cls.CAT_ID_STYLE),
             DURATION_TOLERANCE_SEC=data.get("duration_tolerance_sec", cls.DURATION_TOLERANCE_SEC),
             MUSIC_ROOT_DIR=paths.get("music_root", cls.MUSIC_ROOT_DIR),
             PLAYLIST_DB=_resolve(db.get("playlist_db", cls.PLAYLIST_DB)),
