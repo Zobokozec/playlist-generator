@@ -99,9 +99,20 @@ def enrich_tracks(rows: list[dict], context: "PlaylistContext") -> list[dict]:
         outro = raw_outro if raw_outro is not None else row["duration"]
         net_dur = round(float(outro) - float(intro), 2)
 
+        try:
+            keywords = [
+                kw.strip()
+                for kw in row.get("keywords", "").strip("[]").split(",")
+                if kw.strip()
+            ]
+        except AttributeError:
+            keywords = []
+
         result.append({
             **row,
+            "description":  _strip_comments(row.get("description")),
             "entity_ids":   entity_ids,
+            "keywords":     keywords,
             "chars_by_cat": chars_by_cat,     # {category_id: [char_id, …]}
             "db_idx":       fc.get("idx"),    # DatabaseID z mAirList (items.idx)
             "file_path":    fc.get("file_path"),
@@ -113,6 +124,15 @@ def enrich_tracks(rows: list[dict], context: "PlaylistContext") -> list[dict]:
         })
 
     return result
+
+
+def _strip_comments(text: str | None) -> str:
+    """Odstraní řádky začínající # z textového pole (interní poznámky)."""
+    if not text:
+        return ""
+    return "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("#")
+    ).strip()
 
 
 def _parse_ids(s: str) -> list[int]:

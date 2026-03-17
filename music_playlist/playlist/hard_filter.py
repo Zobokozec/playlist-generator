@@ -18,7 +18,8 @@ select m.id as music_id,
     m.year, -- rok
 	concat('[', GROUP_CONCAT(distinct en.entity), ']') as entity, -- list of entities
     concat('{', GROUP_CONCAT(CONCAT(ch.id, ':', ch.category)), '}') as chars_ids,
-    m.recording_code as isrc
+    m.recording_code as isrc,
+    concat('[', GROUP_CONCAT(distinct ka.keyword), ']') as keywords
     
     
 from music_characteristics_view mcv -- charakteristiky hudby a alb
@@ -37,6 +38,7 @@ inner join (
 	group by eu.entity, track_id -- set entity a hudbu
 	order by track_id, eu.entity -- seřaď podle entity a hudby
     ) en on m.id = en.track_id
+left join keyword_assoc ka on m.id = ka.subject_id and ka.subject_type = 6
 
 where m.deleted = 0 -- není smazaná hudba 
     and duration > 0 -- je delší než 0

@@ -205,6 +205,7 @@ def _export_xml(
             track_dicts,
             prepis=True,
             config={"music_root": context.config.MUSIC_ROOT_DIR},
+            comment_log=f"{mlp_path}.json"
         )
     except Exception as exc:
         logger.error("export: chyba XML exportu: %s", exc)
@@ -257,6 +258,9 @@ def _build_track_export_dict(
                 style.append(char_name)
             else:
                 keywords.append(char_name)
+
+    # Přidej explicitní keywords z DB (z hard filteru)
+    keywords.extend(track.get("keywords") or [])
 
     mid = track["music_id"]
     chars = {
