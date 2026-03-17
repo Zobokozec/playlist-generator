@@ -24,16 +24,21 @@ logger = logging.getLogger(__name__)
 
 def _make_checker(params: dict) -> Callable[[dict], str | None]:
     """Sestaví checker funkci s uzavřenými předzpracovanými parametry."""
-    include_map: dict[int, set] = {}
+    # include_map: {cat_id: set}
+    #   - neprázdná množina → track MUSÍ mít alespoň jednu z nich (jen pokud má danou kategorii)
+    #   - None             → track NESMÍ mít tuto kategorii vůbec (exclude_all)
+    include_map: dict[int, set | None] = {}
     exclude_map: dict[int, set] = {}
     for cat_id, rules in params.get("chars", {}).items():
         cid = int(cat_id)
-        inc = set(rules.get("include", []))
-        exc = set(rules.get("exclude", []))
-        if inc:
-            include_map[cid] = inc
-        if exc:
-            exclude_map[cid] = exc
+        raw_inc = rules.get("include") if rules else None
+        if raw_inc is None and "include" in (rules or {}):
+            include_map[cid] = None          # include: null → exclude celou kategorii
+        elif raw_inc:
+            include_map[cid] = set(raw_inc)
+        raw_exc = rules.get("exclude") if rules else None
+        if raw_exc:
+            exclude_map[cid] = set(raw_exc)
 
     dur_min = params.get("duration", {}).get("min", 0)
     dur_max = params.get("duration", {}).get("max", 9999)
@@ -44,7 +49,13 @@ def _make_checker(params: dict) -> Callable[[dict], str | None]:
         chars = track["chars_by_cat"]
 
         for cat_id, inc_set in include_map.items():
-            if not (set(chars.get(cat_id, [])) & inc_set):
+            track_chars = set(chars.get(cat_id, []))
+            if inc_set is None:
+                # include: null → vyřadit tracky které mají tuto kategorii
+                if track_chars:
+                    return f"cat_{cat_id}_excluded_all"
+            elif track_chars and not (track_chars & inc_set):
+                # include: [ids] → pokud má kategorii, musí matchovat
                 return f"cat_{cat_id}_mismatch"
 
         for cat_id, exc_set in exclude_map.items():

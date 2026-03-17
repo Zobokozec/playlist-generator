@@ -18,6 +18,9 @@ quotas:
   #  "46": 40   # Chvály
   #  "47": 20   # Instrumentální
 
+  "28": # časové
+    "652": 5 # Velikonoční 
+
 soft_filter:
   chars:
     "2": #Žánr
@@ -25,9 +28,14 @@ soft_filter:
         - 292 # kom. - barok
         - 472 # metal
         - 148 # gregoriánský chorál
+    "5":
+      exclude:
+        - 656 # Dětská
+
+
     "28": # časové
-      include: # bere v úvahu jen tyto, ostatní časové ignoruje
-        - 652 # 
+      include: ~ # vyřadí všechny časové
+      #  - 652 # Velikonoční
   duration: # sekundy
     min: 60
     max: 359
