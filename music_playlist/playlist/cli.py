@@ -30,17 +30,19 @@ def _setup_logging(verbose: bool = False) -> None:
 
 
 def _load_params(path: str) -> dict:
-    """Načte a validuje params.json."""
+    """Načte a validuje params soubor (JSON nebo YAML)."""
     p = Path(path)
     if not p.exists():
         print(f"[ERROR] Soubor nenalezen: {path}", file=sys.stderr)
         sys.exit(1)
     with open(p, encoding="utf-8") as f:
-        data = json.load(f)
-    required = {"scheduled_start", "duration_sec"}
-    missing = required - data.keys()
-    if missing:
-        print(f"[ERROR] params.json chybí povinné klíče: {missing}", file=sys.stderr)
+        if p.suffix in (".yaml", ".yml"):
+            import yaml
+            data = yaml.safe_load(f)
+        else:
+            data = json.load(f)
+    if "duration_sec" not in data:
+        print("[ERROR] params chybí povinný klíč: duration_sec", file=sys.stderr)
         sys.exit(1)
     return data
 
@@ -133,7 +135,8 @@ def cmd_generate(args: argparse.Namespace) -> None:
     output_fmt = args.output or params.get("options", {}).get("output", "full")
     dry_run = args.dry_run or params.get("options", {}).get("dry_run", False)
 
-    scheduled_start = datetime.fromisoformat(params["scheduled_start"])
+    raw_start = args.start or params.get("scheduled_start") or datetime.now().isoformat()
+    scheduled_start = datetime.fromisoformat(raw_start)
     duration_sec = int(params["duration_sec"])
 
     # Normalizace kvót (string klíče → int)
@@ -282,7 +285,8 @@ def main(argv: list[str] | None = None) -> None:
 
     # generate
     gen = sub.add_parser("generate", help="Vygeneruj playlist")
-    gen.add_argument("--params",   required=True, help="Cesta k params.json")
+    gen.add_argument("--params",   required=True, help="Cesta k params souboru (JSON nebo YAML)")
+    gen.add_argument("--start",    default=None,  help="Čas vysílání ISO 8601 (výchozí: now)")
     gen.add_argument("--output",   choices=["ids", "full", "debug"], help="Výstupní formát")
     gen.add_argument("--dry-run",  action="store_true", help="Neukládej do DB")
 
