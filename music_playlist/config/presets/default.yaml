@@ -4,7 +4,7 @@
 name: default
 description: Výchozí preset – vyvážené rozložení jazyků a nálad.
 
-target_duration: 14400  # 4 hodiny
+target_duration: 3600 # 14400  # 4 hodiny
 
 quotas:
   "4":   # Jazyk
@@ -28,14 +28,21 @@ soft_filter:
         - 292 # kom. - barok
         - 472 # metal
         - 148 # gregoriánský chorál
+    "4": #jazyk
+      exclude:
+        - 732 # latinsky
+        - 911 # čínsky
+        - 922 # turecky
+        - 925 # thajsky
+        - 952 # arabsky
     "5":
       exclude:
         - 656 # Dětská
 
 
     "28": # časové
-      include: ~ # vyřadí všechny časové
-      #  - 652 # Velikonoční
+      include: #~ # vyřadí všechny časové
+       - 652 # Velikonoční
   duration: # sekundy
     min: 60
     max: 359

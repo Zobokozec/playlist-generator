@@ -13,7 +13,7 @@ duration_tolerance_sec = 5
 # ── Cooldown (hodiny) ───────────────────────────────────────────────────────────
 [cooldown]
 track_hours  = 24   # Track nesmí hrát znovu do N hodin
-album_hours  = 24   # Full album nesmí hrát znovu do N hodin (single/EP neblokují)
+album_hours  = 12   # Full album nesmí hrát znovu do N hodin (single/EP neblokují)
 artist_hours = 6    # Interpret nesmí hrát znovu do N hodin
 
 # ── Typy alb ───────────────────────────────────────────────────────────────────
