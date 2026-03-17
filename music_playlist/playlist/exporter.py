@@ -26,17 +26,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# SQL pro batch načtení exportních metadat z twar
-_EXPORT_META_SQL = """
-SELECT
-    m.id            AS music_id,
-    m.name          AS title,
-    m.pronunciation,
-    m.description
-FROM music m
-WHERE m.id IN ({placeholders})
-"""
-
 
 @dataclass
 class GeneratorResult:
@@ -197,9 +186,6 @@ def _export_xml(
         logger.warning("export: prázdný playlist, XML se negeneruje")
         return None
 
-    # --- Batch dotaz: exportní metadata z twar ---
-    meta_by_id = _fetch_export_metadata(selected, context)
-
     # --- MLP cesta ---
     scheduled_start = params.get("scheduled_start", "")
     if hasattr(scheduled_start, "strftime"):
@@ -212,94 +198,44 @@ def _export_xml(
     exports_dir.mkdir(parents=True, exist_ok=True)
     mlp_path = str(exports_dir / filename)
 
-    # --- Export per track ---
-    export_path = None
-    for track in selected:
-        track_dict = _build_track_export_dict(track, meta_by_id, context)
-        try:
-            export_path = export_to_xml(mlp_path, track_dict)
-        except Exception as exc:
-            logger.error(
-                "export: chyba při exportu tracku %d: %s",
-                track["music_id"], exc,
-            )
-
-    logger.info("export: XML exportován → %s (%d tracků)", mlp_path, len(selected))
-    return export_path
-
-
-def _fetch_export_metadata(
-    selected: list[dict],
-    context: "PlaylistContext",
-) -> dict[int, dict]:
-    """Batch dotaz na twar pro exportní metadata (title, album, pronunciation, description).
-
-    Args:
-        selected: Vybrané tracky.
-        context:  PlaylistContext s přístupem k twar a entity_map.
-
-    Returns:
-        {music_id: {title, album_name, pronunciation, description,
-                    artist_pronunciation}}
-    """
-    music_ids = [t["music_id"] for t in selected]
-    placeholders = ",".join(["%s"] * len(music_ids))
-
+    # --- Sestav seznam tracků a exportuj najednou ---
+    track_dicts = [_build_track_export_dict(t, context) for t in selected]
     try:
-        rows = context.twar.dotaz_dict(
-            _EXPORT_META_SQL.format(placeholders=placeholders),
-            music_ids,
+        export_path = export_to_xml(
+            mlp_path,
+            track_dicts,
+            prepis=True,
+            config={"music_root": context.config.MUSIC_ROOT_DIR},
         )
     except Exception as exc:
-        logger.warning("export: nelze načíst metadata z twar: %s", exc)
-        rows = []
+        logger.error("export: chyba XML exportu: %s", exc)
+        return None
 
-    music_meta = {r["music_id"]: r for r in rows}
-
-    # Přidej artist_pronunciation z entity_map (načteno při initu)
-    for t in selected:
-        mid = t["music_id"]
-        pronunciations = [
-            context.entity_map.get(eid, {}).get("pronunciation", "")
-            for eid in t.get("entity_ids", [])
-            if context.entity_map.get(eid, {}).get("pronunciation")
-        ]
-        if mid in music_meta:
-            music_meta[mid]["artist_pronunciation"] = ", ".join(pronunciations)
-
-    return music_meta
+    logger.info("export: XML exportován → %s (%d tracků)", mlp_path, len(selected))
+    return str(export_path)
 
 
 def _build_track_export_dict(
     track: dict,
-    meta_by_id: dict[int, dict],
     context: "PlaylistContext",
 ) -> dict:
-    """Sestaví dict pro xmlplaylist.export_to_xml() z enriched tracku a metadat.
+    """Sestaví dict pro xmlplaylist.export_to_xml() z enriched tracku.
 
+    Metadata (title, pronunciation, description) jsou přímo v tracku z hard filteru.
     Mapování charakteristik z char_map:
         category "Jazyk"            → language  (string, první hodnota)
         category "Tempo"            → tempo     (string, první hodnota)
         category "Žánr" / "Styl"    → style     (list stringů)
         ostatní kategorie           → keywords  (list stringů)
-
-    Args:
-        track:      Enriched track dict.
-        meta_by_id: Výstup _fetch_export_metadata.
-        context:    PlaylistContext pro char_map a entity_map.
-
-    Returns:
-        Dict kompatibilní s xmlplaylist.export_to_xml().
     """
-    mid = track["music_id"]
-    meta = meta_by_id.get(mid, {})
-
-    # Jméno interpreta/ů z entity_map
-    artist_names = [
-        context.entity_name(eid)
-        for eid in track.get("entity_ids", [])
-    ]
+    # Jméno a výslovnost interpreta/ů z entity_map
+    artist_names = [context.entity_name(eid) for eid in track.get("entity_ids", [])]
     artist = ", ".join(artist_names) if artist_names else ""
+    artist_pronunciation = ", ".join(
+        context.entity_map.get(eid, {}).get("pronunciation", "")
+        for eid in track.get("entity_ids", [])
+        if context.entity_map.get(eid, {}).get("pronunciation")
+    )
 
     # Mapování charakteristik podle kategorie
     language: str = ""
@@ -325,13 +261,13 @@ def _build_track_export_dict(
                 keywords.append(char_name)
 
     return {
-        "title":                meta.get("title") or "",
+        "title":                track.get("title") or "",
         "artist":               artist,
-        "pronunciation":        meta.get("pronunciation") or "",
-        "artist_pronunciation": meta.get("artist_pronunciation") or "",
+        "pronunciation":        track.get("pronunciation") or "",
+        "artist_pronunciation": artist_pronunciation,
         "year":                 track.get("year"),
         "album":                context.album_map.get(track.get("album_id", 0), {}).get("name", ""),
-        "description":          meta.get("description") or "",
+        "description":          track.get("description") or "",
         "language":             language,
         "tempo":                tempo,
         "style":                style,
@@ -377,14 +313,15 @@ def _track_full(track: dict, context: "PlaylistContext") -> dict:
     }
     return {
         "id":           track["music_id"],
+        "title":        track.get("title") or "",
+        "entities":     [context.entity_name(e) for e in track.get("entity_ids", [])],
         "album_id":     track["album_id"],
+        "year":         track.get("year"),
         "duration":     track.get("duration"),
         "net_duration": track.get("net_duration"),
-        "file_path":    track.get("file_path"),
         "intro_sec":    track.get("intro_sec"),
         "outro_sec":    track.get("outro_sec"),
-        "year":         track.get("year"),
+        "file_path":    track.get("file_path"),
         "isrc":         track.get("isrc"),
-        "entities":     [context.entity_name(e) for e in track.get("entity_ids", [])],
         "chars":        chars_named,
     }

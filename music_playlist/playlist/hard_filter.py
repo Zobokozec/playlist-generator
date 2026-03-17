@@ -11,12 +11,13 @@ from __future__ import annotations
 HARD_FILTER_SQL = """
 select m.id as music_id,
 	m.album as album_id,
+    m.name as title,
+    m.name_pronunciation as pronunciation,
+    m.description,
     m.duration, -- délka
-    m.year, -- rok 
+    m.year, -- rok
 	concat('[', GROUP_CONCAT(distinct en.entity), ']') as entity, -- list of entities
     concat('{', GROUP_CONCAT(CONCAT(ch.id, ':', ch.category)), '}') as chars_ids,
-    -- ch.category, 
-    -- ch.id as characteristic
     m.recording_code as isrc
     
     
