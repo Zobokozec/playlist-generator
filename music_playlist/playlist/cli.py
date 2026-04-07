@@ -179,6 +179,9 @@ def cmd_generate(args: argparse.Namespace) -> None:
         "chars":    sf_chars,
         "duration": raw_sf.get("duration", {}),
         "year":     raw_sf.get("year", {}),
+        "exclude_tracks":  params.get("exclude_tracks", []),
+        "exclude_artists": params.get("exclude_artists", []),
+        "exclude_albums":  params.get("exclude_albums", []),
     }
 
     from music_playlist.config.config import PlaylistConfig

@@ -45,7 +45,24 @@ def _make_checker(params: dict) -> Callable[[dict], str | None]:
     year_min = params.get("year", {}).get("min", 0)
     year_max = params.get("year", {}).get("max", 9999)
 
+    # Exclude listy pro tracky, interprety, alba
+    excl_tracks = set(params.get("exclude_tracks", []))
+    excl_artists = {a.lower() for a in params.get("exclude_artists", []) if isinstance(a, str)}
+    excl_albums = {a.lower() for a in params.get("exclude_albums", []) if isinstance(a, str)}
+
     def check(track: dict) -> str | None:
+        # Exclude listy – tracky, interpreti, alba
+        if excl_tracks and track.get("music_id") in excl_tracks:
+            return "excluded_track"
+        if excl_artists:
+            artist = (track.get("artist") or track.get("artist_names") or "").lower()
+            if artist and artist in excl_artists:
+                return "excluded_artist"
+        if excl_albums:
+            album = (track.get("album") or track.get("album_name") or "").lower()
+            if album and album in excl_albums:
+                return "excluded_album"
+
         chars = track["chars_by_cat"]
 
         for cat_id, inc_set in include_map.items():
