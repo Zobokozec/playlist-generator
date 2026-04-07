@@ -14,15 +14,40 @@ select m.id as music, -- music_id
     m.duration, -- délka
     m.year, -- rok 
 	concat('[', GROUP_CONCAT(distinct en.entity), ']') as entity, -- list of entities
-    concat('{', GROUP_CONCAT(CONCAT(ch.id, ':', ch.category)), '}') as chars_ids
+    concat('{', GROUP_CONCAT(CONCAT(ch.id, ':', ch.category)), '}') as chars_ids,
     -- ch.category, 
     -- ch.id as characteristic
+    m.recording_code as isrc -- isrc kod
     
     
-from music_characteristics_view mcv 
+from music_characteristics_view mcv -- charakteristiky hudby a alb
+inner join music m on m.id = mcv.subject_1 -- připoj hudbu
+inner join music_media mm on m.id = mm.music -- připoj nosiče
+inner join characteristics ch on mcv.subject_2 = ch.id -- připoj charakteristiky
+inner join (
+	SELECT eu.entity, eu.subject_id as track_id -- načti music.id a entitu
+	from entity_usage eu
+    INNER JOIN binary_assoc eur ON eur.subject_1 = eu.id 
+		AND eur.subject_type_1 = 14 -- entity_usage
+        AND eur.subject_type_2 = 13 -- role_entity
+        AND eur.assoc_type = 3 -- entityUsageRole
+    where eu.subject_type in (6, 12) -- usage je v music, music album
+		and eur.subject_2 in (5,6) -- role je skupina nebo interpret
+	group by eu.entity, track_id -- set entity a hudbu
+	order by track_id, eu.entity -- seřaď podle entity a hudby
+    ) en on m.id = en.track_id
+
 where m.deleted = 0 -- není smazaná hudba 
     and duration > 0 -- je delší než 0
     and year is not null -- má zadaný rok
+    and mm.medium_type in (199,205) -- je na CD nebo PC
+    and not exists(
+		select 1 
+        from music_characteristics_view mcx 
+        where mcx.subject_1 = m.id 
+        and mcx.subject_2 in (select id from characteristics where category = 3)
+        ) -- nemá technickou charakteristiku
+	and (year > 2000 or ch.id = 904) -- je novější než 2000 nebo je evergreen
  group by m.id
 """
 
