@@ -1,11 +1,6 @@
-# Preset: Default
-# Vyvážené kvóty pro obecné použití
-
 name: default
 description: Výchozí preset – vyvážené rozložení jazyků a nálad.
-
-target_duration: 3600 # 14400  # 4 hodiny
-
+target_duration: 14400
 quotas:
   "4":   # Jazyk
     "639": 45   # Čeština
@@ -48,5 +43,7 @@ soft_filter:
     max: 359
   year:
     min: 1970
-
+  chars:
+    '28':
+      include: null
 tolerance: 120

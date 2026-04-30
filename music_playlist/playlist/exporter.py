@@ -199,6 +199,7 @@ def _export_xml(
 
     # --- Sestav seznam tracků a exportuj najednou ---
     track_dicts = [_build_track_export_dict(t, context) for t in selected]
+    _enrich_with_markers_and_attrs(track_dicts, context)
     try:
         export_path = export_to_xml(
             mlp_path,
@@ -213,6 +214,49 @@ def _export_xml(
 
     logger.info("export: XML exportován → %s (%d tracků)", mlp_path, len(selected))
     return str(export_path)
+
+
+def _enrich_with_markers_and_attrs(
+    track_dicts: list[dict],
+    context: "PlaylistContext",
+) -> None:
+    """Doplní cue markery a rozšířené atributy z mAirList ``musicdb.mldb``.
+
+    Mutuje track_dicts in-place – přidává klíče ``markers`` a ``attributes``
+    (formát viz xmlplaylist.builder._resolve_*).
+
+    Pokud DB chybí nebo se nepodaří otevřít, je to no-op – builder doplní
+    Album/Year/Genre/Track z fallback polí v track dictu.
+    """
+    if not track_dicts:
+        return
+    music_db = getattr(context.config, "MUSIC_DB", None)
+    if not music_db or not Path(music_db).exists():
+        return
+    try:
+        from xmlplaylist.db import MediaDBReader
+    except ImportError:
+        return
+
+    idx_list = [t["idx"] for t in track_dicts if t.get("idx")]
+    if not idx_list:
+        return
+    try:
+        with MediaDBReader(str(music_db)) as db:
+            extra = db.get_markers_attributes_by_idx(idx_list)
+    except Exception as exc:
+        logger.warning("export: nelze načíst markers/attributes z %s: %s", music_db, exc)
+        return
+
+    for t in track_dicts:
+        idx = t.get("idx")
+        if idx is None:
+            continue
+        info = extra.get(idx)
+        if not info:
+            continue
+        t["markers"] = info["markers"]
+        t["attributes"] = info["attributes"]
 
 
 def _build_track_export_dict(
