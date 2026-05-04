@@ -16,16 +16,24 @@ logger = logging.getLogger(__name__)
 SCHEMA_SQL = """
 -- Playlisty
 CREATE TABLE IF NOT EXISTS playlists (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    name            TEXT,
-    scheduled_start DATETIME NOT NULL,
-    duration        INTEGER NOT NULL,
-    preset_name     TEXT DEFAULT 'default',
-    status          TEXT DEFAULT 'draft',   -- draft|ready|exported
-    config_json     TEXT,
-    total_tracks    INTEGER,
-    actual_duration INTEGER,
-    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                TEXT,
+    scheduled_start     DATETIME NOT NULL,
+    duration            INTEGER NOT NULL,
+    preset_name         TEXT DEFAULT 'default',
+    -- Workflow stavy:
+    --   draft     – vygenerováno (redaktor edituje)
+    --   ready     – redaktor potvrdil, čeká na technika
+    --   confirmed – technik zkontroloval, připraveno k vysílání
+    --   recorded  – do MLP byly přidány voicetracky (auto-detekce)
+    --   done      – uzamčeno (název HHMM.mlp existuje, nebo čas slotu v minulosti)
+    status              TEXT DEFAULT 'draft',
+    config_json         TEXT,
+    total_tracks        INTEGER,
+    actual_duration     INTEGER,
+    technician_checked  INTEGER DEFAULT 0,    -- 0/1, checkbox technika
+    locked_at           TEXT,                  -- ISO datetime, kdy playlist přešel do done
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_playlists_start  ON playlists(scheduled_start);
@@ -119,6 +127,18 @@ CREATE INDEX IF NOT EXISTS idx_tv_isrc     ON track_validation(isrc_ok);
 """
 
 
+def _migrate_playlists_table(conn: sqlite3.Connection) -> None:
+    """Doplní nové sloupce do tabulky playlists, pokud chybí (idempotentní)."""
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(playlists)")}
+    if "technician_checked" not in cols:
+        conn.execute("ALTER TABLE playlists ADD COLUMN technician_checked INTEGER DEFAULT 0")
+        logger.info("DB migrace: přidán sloupec playlists.technician_checked")
+    if "locked_at" not in cols:
+        conn.execute("ALTER TABLE playlists ADD COLUMN locked_at TEXT")
+        logger.info("DB migrace: přidán sloupec playlists.locked_at")
+    conn.commit()
+
+
 def init_db(db_path: str | Path) -> sqlite3.Connection:
     """Inicializuje playlist.db – vytvoří tabulky pokud neexistují.
 
@@ -133,6 +153,7 @@ def init_db(db_path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA_SQL)
+    _migrate_playlists_table(conn)
     conn.commit()
     logger.info("DB inicializována: %s", db_path)
     return conn
