@@ -50,13 +50,15 @@ def export_playlist(
     params: dict,
     output_format: str = "full",
     dry_run: bool = False,
+    create_xml: bool = True,
+    set_status: str = "ready",
 ) -> dict | list:
     """Spustí validaci, uloží playlist do DB, exportuje XML a vrátí výstup.
 
     Pořadí kroků:
         1. run_validation() – validate_all() z music-utils pro každý track
         2. _save_to_db()    – playlist, history, výsledky validace
-        3. _export_xml()    – MLP soubor přes xmlplaylist
+        3. _export_xml()    – MLP soubor přes xmlplaylist (volitelné)
 
     Args:
         result:        GeneratorResult ze pipeline.
@@ -64,6 +66,11 @@ def export_playlist(
         params:        Původní parametry generování (scheduled_start, preset, …).
         output_format: 'ids' | 'full' | 'debug'
         dry_run:       Pokud True, nic neukládá do DB ani na disk.
+        create_xml:    Pokud False, MLP soubor se nezapíše (např. když má
+                       webview držet draft pohled jen v DB až do potvrzení).
+        set_status:    Status, na který se playlist přepne po uložení.
+                       Výchozí 'ready' kvůli zpětné kompatibilitě – webview
+                       pro slot-based generování posílá 'draft'.
 
     Returns:
         JSON-serializovatelný výstup dle output_format.
@@ -74,8 +81,9 @@ def export_playlist(
     result.validation = run_validation(result.selected, context)
 
     if not dry_run:
-        _save_to_db(result, context, params)
-        _export_xml(result, context, params)
+        _save_to_db(result, context, params, set_status=set_status)
+        if create_xml:
+            _export_xml(result, context, params)
 
     return _format_output(result.selected, result, context, output_format)
 
@@ -88,8 +96,13 @@ def _save_to_db(
     result: GeneratorResult,
     context: "PlaylistContext",
     params: dict,
+    set_status: str = "ready",
 ) -> None:
-    """Uloží status playlistu a playlist_history do playlist.db."""
+    """Uloží status playlistu a playlist_history do playlist.db.
+
+    ``set_status`` se zapíše do sloupce ``status`` – webview používá 'draft'
+    pro slot-based generování (MLP se vytvoří až při potvrzení).
+    """
     db = context.playlistdb
     scheduled_start = params.get("scheduled_start")
     if isinstance(scheduled_start, str):
@@ -100,12 +113,11 @@ def _save_to_db(
         for t in result.selected
     )
 
-    # Aktualizuj status na 'ready'
     db.execute("""
         UPDATE playlists
-        SET status = 'ready', total_tracks = ?, actual_duration = ?
+        SET status = ?, total_tracks = ?, actual_duration = ?
         WHERE id = ?
-    """, (len(result.selected), int(total_duration), result.playlist_id))
+    """, (set_status, len(result.selected), int(total_duration), result.playlist_id))
 
     # Uložit každý track do history (pro cooldown)
     start_iso = (
